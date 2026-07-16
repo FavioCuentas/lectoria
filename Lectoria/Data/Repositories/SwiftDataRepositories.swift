@@ -166,6 +166,14 @@ public final class SwiftDataHighlightRepository: HighlightRepository {
         return models.map { $0.toDomain() }
     }
 
+    public func fetchAll() async throws -> [Highlight] {
+        let descriptor = FetchDescriptor<HighlightModel>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        let models = try context.fetch(descriptor)
+        return models.map { $0.toDomain() }
+    }
+
     public func fetch(id: UUID) async throws -> Highlight? {
         let descriptor = FetchDescriptor<HighlightModel>(
             predicate: #Predicate<HighlightModel> { $0.id == id }

@@ -26,6 +26,19 @@ struct TextReaderView: View {
     @State private var targetLocation: TextLocation? = nil
     @State private var tocItems: [TOCItem] = []
     @State private var bookmarks: [Bookmark] = []
+    
+    // Anotaciones y Destacados
+    @State private var highlights: [Highlight] = []
+    @State private var showNoteEditor = false
+    @State private var noteBody = ""
+    @State private var noteTags = ""
+    @State private var pendingCategory: HighlightCategory? = nil
+    @State private var selectedBlockIndex: Int? = nil
+
+    init(record: PublicationRecord, initialLocation: TextLocation? = nil) {
+        self.record = record
+        self._initialLocation = State(initialValue: initialLocation)
+    }
 
     // Control de visibilidad de bloques en pantalla
     @State private var visibleIndices = Set<Int>()
@@ -288,6 +301,9 @@ struct TextReaderView: View {
         .sheet(isPresented: $showSearch) {
             searchSheet(theme: theme)
         }
+        .sheet(isPresented: $showNoteEditor) {
+            noteEditorSheet(theme: theme)
+        }
     }
 
     // MARK: - Block rendering in SwiftUI
@@ -296,61 +312,97 @@ struct TextReaderView: View {
     private func blockView(_ block: TextBlock) -> some View {
         let theme = themeManager.currentTheme
         let baseSize: CGFloat = 16.0 * fontSizeMultiplier
+        let highlight = activeHighlight(for: block.index)
+        let highlightBgColor = categoryColorName(highlight?.colorToken)
 
-        switch block.type {
-        case let .heading(text, level):
-            Text(text)
-                .font(.system(size: baseSize * (2.2 - CGFloat(level) * 0.2), weight: .bold, design: .serif))
-                .foregroundStyle(AppColor.textPrimary(for: theme))
-                .padding(.top, AppSpacing.lg)
-                .padding(.bottom, AppSpacing.xs)
+        Group {
+            switch block.type {
+            case let .heading(text, level):
+                Text(text)
+                    .font(.system(size: baseSize * (2.2 - CGFloat(level) * 0.2), weight: .bold, design: .serif))
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+                    .padding(.top, AppSpacing.lg)
+                    .padding(.bottom, AppSpacing.xs)
 
-        case let .paragraph(text):
-            Text(text)
-                .font(useSerif ? .system(size: baseSize, design: .serif) : .system(size: baseSize, design: .default))
-                .lineSpacing(AppTypography.defaultLineSpacing)
-                .foregroundStyle(AppColor.textPrimary(for: theme))
+            case let .paragraph(text):
+                Text(text)
+                    .font(useSerif ? .system(size: baseSize, design: .serif) : .system(size: baseSize, design: .default))
+                    .lineSpacing(AppTypography.defaultLineSpacing)
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+                    .padding(.vertical, AppSpacing.xxs)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+            case let .blockquote(text):
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(AppColor.accent(for: theme).opacity(0.6))
+                        .frame(width: 4)
+                        .padding(.trailing, AppSpacing.md)
+
+                    Text(text)
+                        .font(useSerif ? .system(size: baseSize, design: .serif).italic() : .system(size: baseSize, design: .default).italic())
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.vertical, AppSpacing.sm)
+                .padding(.leading, AppSpacing.xs)
+
+            case let .listItem(text):
+                HStack(alignment: .top, spacing: AppSpacing.sm) {
+                    Text("•")
+                        .font(.system(size: baseSize, weight: .bold))
+                        .foregroundStyle(AppColor.accent(for: theme))
+
+                    Text(text)
+                        .font(useSerif ? .system(size: baseSize, design: .serif) : .system(size: baseSize, design: .default))
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                }
                 .padding(.vertical, AppSpacing.xxs)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-        case let .blockquote(text):
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(AppColor.accent(for: theme).opacity(0.6))
-                    .frame(width: 4)
-                    .padding(.trailing, AppSpacing.md)
-
-                Text(text)
-                    .font(useSerif ? .system(size: baseSize, design: .serif).italic() : .system(size: baseSize, design: .default).italic())
-                    .foregroundStyle(AppColor.textSecondary(for: theme))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            case let .codeBlock(code, _):
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(code)
+                        .font(.system(size: baseSize * 0.9, design: .monospaced))
+                        .foregroundStyle(theme == .dark ? Color.green : AppColor.textPrimary(for: theme))
+                        .padding(AppSpacing.md)
+                }
+                .background(AppColor.surfaceSecondary(for: theme))
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.xs))
+                .padding(.vertical, AppSpacing.sm)
             }
-            .padding(.vertical, AppSpacing.sm)
-            .padding(.leading, AppSpacing.xs)
-
-        case let .listItem(text):
-            HStack(alignment: .top, spacing: AppSpacing.sm) {
-                Text("•")
-                    .font(.system(size: baseSize, weight: .bold))
-                    .foregroundStyle(AppColor.accent(for: theme))
-
-                Text(text)
-                    .font(useSerif ? .system(size: baseSize, design: .serif) : .system(size: baseSize, design: .default))
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
+        }
+        .padding(.horizontal, AppSpacing.xs)
+        .background(highlightBgColor)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if let active = highlight {
+                Button(role: .destructive) {
+                    deleteHighlight(active)
+                } label: {
+                    Label("Eliminar destacado", systemImage: "trash")
+                }
+            } else {
+                Menu("Destacar") {
+                    ForEach(HighlightCategory.allCases, id: \.self) { cat in
+                        Button {
+                            createHighlight(category: cat, blockIndex: block.index, text: block.rawText)
+                        } label: {
+                            Label(cat.rawValue, systemImage: "circle.fill")
+                        }
+                    }
+                }
+                
+                Button {
+                    selectedBlockIndex = block.index
+                    noteBody = ""
+                    noteTags = ""
+                    pendingCategory = nil
+                    showNoteEditor = true
+                } label: {
+                    Label("Añadir nota", systemImage: "note.text.badge.plus")
+                }
             }
-            .padding(.vertical, AppSpacing.xxs)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-        case let .codeBlock(code, _):
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: baseSize * 0.9, design: .monospaced))
-                    .foregroundStyle(theme == .dark ? Color.green : AppColor.textPrimary(for: theme))
-                    .padding(AppSpacing.md)
-            }
-            .background(AppColor.surfaceSecondary(for: theme))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.xs))
-            .padding(.vertical, AppSpacing.sm)
         }
     }
 
@@ -703,9 +755,12 @@ struct TextReaderView: View {
             // 4. Cargar marcadores locales
             await loadBookmarks()
 
+            // 5. Cargar destacados locales
+            await loadHighlights()
+
             self.isLoading = false
 
-            // 5. Navegar a la posición inicial guardada con un pequeño delay de rendering
+            // 6. Navegar a la posición inicial guardada con un pequeño delay de rendering
             if let initial = initialLocation {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     targetLocation = initial
@@ -717,17 +772,171 @@ struct TextReaderView: View {
         }
     }
 
-    private func updateCurrentLocation() {
-        guard !adapter.blocks.isEmpty else { return }
+    private func loadHighlights() async {
+        if let list = try? await dependencies.highlightRepository.fetch(forPublication: record.id) {
+            await MainActor.run {
+                self.highlights = list
+            }
+        }
+    }
 
-        // El primer bloque visible en pantalla determina nuestra posición actual
-        if let firstVisible = visibleIndices.min() {
-            let percentage = Double(firstVisible) / Double(max(1, adapter.blocks.count - 1))
-            self.currentLocation = TextLocation(
-                blockIndex: firstVisible,
-                characterOffset: 0,
-                percentage: percentage
-            )
+    private func activeHighlight(for index: Int) -> Highlight? {
+        highlights.first { highlight in
+            if let data = highlight.anchor.data(using: .utf8),
+               let location = try? JSONDecoder().decode(TextLocation.self, from: data) {
+                return location.blockIndex == index
+            }
+            return false
+        }
+    }
+
+    private func categoryColorName(_ name: String?) -> Color {
+        guard let name = name?.lowercased() else { return .clear }
+        switch name {
+        case "idea principal", "blue", "mainidea":
+            return .blue.opacity(0.2)
+        case "duda", "purple", "question":
+            return .purple.opacity(0.2)
+        case "evidencia", "green", "evidence":
+            return .green.opacity(0.2)
+        case "acción", "accion", "orange", "coral", "action":
+            return .orange.opacity(0.2)
+        case "cita", "pink", "quote":
+            return .pink.opacity(0.2)
+        default:
+            return .clear
+        }
+    }
+
+    private func categoryColorToken(_ category: HighlightCategory) -> String {
+        switch category {
+        case .mainIdea: return "mainIdea"
+        case .question: return "question"
+        case .evidence: return "evidence"
+        case .action: return "action"
+        case .quote: return "quote"
+        }
+    }
+
+    private func createHighlight(category: HighlightCategory, blockIndex: Int, text: String, customNoteBody: String? = nil) {
+        let colorToken = categoryColorToken(category)
+        let total = adapter.blocks.count
+        let pct = total > 1 ? Double(blockIndex) / Double(total - 1) : 0.0
+        let loc = TextLocation(blockIndex: blockIndex, characterOffset: 0, percentage: pct)
+        let anchorData = (try? JSONEncoder().encode(loc)) ?? Data()
+        let anchorStr = String(data: anchorData, encoding: .utf8) ?? ""
+        
+        let highlight = Highlight(
+            publicationID: record.id,
+            anchor: anchorStr,
+            selectedText: text,
+            category: category.rawValue,
+            colorToken: colorToken
+        )
+        
+        Task {
+            // Guardar el destacado
+            try? await dependencies.highlightRepository.save(highlight)
+            
+            // Si hay una nota asociada, guardarla
+            if let customNoteBody, !customNoteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let tagsArray = noteTags.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                
+                let note = Note(
+                    publicationID: record.id,
+                    highlightID: highlight.id,
+                    anchor: anchorStr,
+                    body: customNoteBody,
+                    tags: tagsArray
+                )
+                try? await dependencies.noteRepository.save(note)
+            }
+            
+            await loadHighlights()
+        }
+    }
+
+    private func deleteHighlight(_ highlight: Highlight) {
+        Task {
+            // Eliminar destacado de la base de datos
+            try? await dependencies.highlightRepository.delete(id: highlight.id)
+            
+            // Eliminar notas asociadas
+            if let notes = try? await dependencies.noteRepository.fetch(forPublication: record.id) {
+                for note in notes {
+                    if note.highlightID == highlight.id {
+                        try? await dependencies.noteRepository.delete(id: note.id)
+                    }
+                }
+            }
+            
+            await loadHighlights()
+        }
+    }
+
+    private func noteEditorSheet(theme: AppTheme) -> some View {
+        NavigationStack {
+            VStack(spacing: AppSpacing.md) {
+                Picker("Categoría", selection: Binding(
+                    get: { pendingCategory ?? .mainIdea },
+                    set: { pendingCategory = $0 }
+                )) {
+                    ForEach(HighlightCategory.allCases, id: \.self) { cat in
+                        Text(cat.rawValue).tag(cat)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.top, AppSpacing.md)
+                
+                TextEditor(text: $noteBody)
+                    .font(AppTypography.body)
+                    .padding(AppSpacing.sm)
+                    .background(AppColor.surfaceSecondary(for: theme))
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                    .padding(.horizontal, AppSpacing.lg)
+                    .overlay(
+                        VStack {
+                            if noteBody.isEmpty {
+                                HStack {
+                                    Text("Escribe tu nota aquí...")
+                                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                                        .padding(.leading, AppSpacing.xl + 4)
+                                        .padding(.top, AppSpacing.lg)
+                                    Spacer()
+                                }
+                                Spacer()
+                            }
+                        }
+                    )
+                
+                TextField("Etiquetas (separadas por coma, ej: examen, física)", text: $noteTags)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.bottom, AppSpacing.xl)
+            }
+            .background(AppColor.background(for: theme))
+            .navigationTitle("Crear nota vinculada")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancelar") {
+                        showNoteEditor = false
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Guardar") {
+                        let selectedCat = pendingCategory ?? .mainIdea
+                        if let index = selectedBlockIndex, index < adapter.blocks.count {
+                            let block = adapter.blocks[index]
+                            createHighlight(category: selectedCat, blockIndex: index, text: block.rawText, customNoteBody: noteBody)
+                        }
+                        showNoteEditor = false
+                    }
+                    .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
     }
 
@@ -835,6 +1044,19 @@ struct TextReaderView: View {
     }
 
     // MARK: - Helpers
+
+    private func updateCurrentLocation() {
+        guard !adapter.blocks.isEmpty else { return }
+
+        if let firstVisible = visibleIndices.min() {
+            let percentage = Double(firstVisible) / Double(max(1, adapter.blocks.count - 1))
+            self.currentLocation = TextLocation(
+                blockIndex: firstVisible,
+                characterOffset: 0,
+                percentage: percentage
+            )
+        }
+    }
 
     private var safeAreaTop: CGFloat {
         let scenes = UIApplication.shared.connectedScenes

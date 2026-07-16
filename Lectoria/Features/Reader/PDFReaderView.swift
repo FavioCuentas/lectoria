@@ -29,6 +29,20 @@ struct PDFReaderView: View {
     @State private var targetLocation: PDFLocation? = nil
     @State private var tocItems: [TOCItem] = []
     @State private var bookmarks: [Bookmark] = []
+    
+    // Anotaciones y Destacados
+    @State private var highlights: [Highlight] = []
+    @State private var selectedText = ""
+    @State private var hasSelection = false
+    @State private var showNoteEditor = false
+    @State private var noteBody = ""
+    @State private var noteTags = ""
+    @State private var pendingCategory: HighlightCategory? = nil
+
+    init(record: PublicationRecord, initialLocation: PDFLocation? = nil) {
+        self.record = record
+        self._initialLocation = State(initialValue: initialLocation)
+    }
 
     // Controles de interfaz de usuario
     @State private var showUI = true
@@ -73,6 +87,9 @@ struct PDFReaderView: View {
                     initialLocation: initialLocation,
                     currentLocation: $currentLocation,
                     isScrollMode: isScrollMode,
+                    selectedText: $selectedText,
+                    hasSelection: $hasSelection,
+                    highlights: highlights,
                     pdfViewBinding: $pdfViewReference,
                     onTap: { _ in
                         withAnimation(.easeInOut(duration: 0.25)) {
@@ -88,9 +105,18 @@ struct PDFReaderView: View {
             if !isLoading && loadingError == nil {
                 overlaysView(theme: appTheme)
             }
+            
+            // Panel flotante de selección
+            if hasSelection && !selectedText.isEmpty {
+                selectionFloatingToolbar(theme: appTheme)
+                    .transition(.opacity)
+            }
         }
         .navigationBarHidden(true)
         .statusBarHidden(!showUI)
+        .sheet(isPresented: $showNoteEditor) {
+            noteEditorSheet(theme: appTheme)
+        }
         .task {
             await loadPDF()
         }
@@ -579,10 +605,208 @@ struct PDFReaderView: View {
             // 4. Cargar marcadores locales
             await loadBookmarks()
             
+            // 5. Cargar destacados de base de datos
+            await loadHighlights()
+            
             self.isLoading = false
         } catch {
             self.loadingError = error.localizedDescription
             self.isLoading = false
+        }
+    }
+
+    private func loadHighlights() async {
+        if let list = try? await dependencies.highlightRepository.fetch(forPublication: record.id) {
+            await MainActor.run {
+                self.highlights = list
+            }
+        }
+    }
+
+    private func categoryColor(_ category: HighlightCategory) -> Color {
+        switch category {
+        case .mainIdea: return .blue
+        case .question: return .purple
+        case .evidence: return .green
+        case .action: return .orange
+        case .quote: return .pink
+        }
+    }
+    
+    private func categoryColorToken(_ category: HighlightCategory) -> String {
+        switch category {
+        case .mainIdea: return "mainIdea"
+        case .question: return "question"
+        case .evidence: return "evidence"
+        case .action: return "action"
+        case .quote: return "quote"
+        }
+    }
+
+    private func createHighlight(category: HighlightCategory, customNoteBody: String? = nil) {
+        guard let current = currentLocation else { return }
+        
+        let colorToken = categoryColorToken(category)
+        let anchorData = (try? JSONEncoder().encode(current)) ?? Data()
+        let anchorStr = String(data: anchorData, encoding: .utf8) ?? ""
+        
+        let highlight = Highlight(
+            publicationID: record.id,
+            anchor: anchorStr,
+            selectedText: selectedText,
+            category: category.rawValue,
+            colorToken: colorToken
+        )
+        
+        Task {
+            // Guardar el destacado
+            try? await dependencies.highlightRepository.save(highlight)
+            
+            // Si hay una nota asociada, guardarla
+            if let customNoteBody, !customNoteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let tagsArray = noteTags.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                
+                let note = Note(
+                    publicationID: record.id,
+                    highlightID: highlight.id,
+                    anchor: anchorStr,
+                    body: customNoteBody,
+                    tags: tagsArray
+                )
+                try? await dependencies.noteRepository.save(note)
+            }
+            
+            // Limpiar selección y refrescar destacados
+            await MainActor.run {
+                pdfViewReference?.clearSelection()
+                hasSelection = false
+                selectedText = ""
+            }
+            await loadHighlights()
+        }
+    }
+
+    private func selectionFloatingToolbar(theme: AppTheme) -> some View {
+        VStack {
+            Spacer()
+            
+            HStack(spacing: AppSpacing.md) {
+                // Los 5 colores de categorías de subrayado
+                ForEach(HighlightCategory.allCases, id: \.self) { category in
+                    Button {
+                        createHighlight(category: category)
+                    } label: {
+                        Circle()
+                            .fill(categoryColor(category))
+                            .frame(width: 32, height: 32)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white, lineWidth: 2)
+                            )
+                            .shadow(radius: 2)
+                    }
+                }
+                
+                Divider()
+                    .frame(height: 24)
+                    .background(AppColor.border(for: theme))
+                
+                // Botón para Anotar (Nota vinculada)
+                Button {
+                    noteBody = ""
+                    noteTags = ""
+                    pendingCategory = nil
+                    showNoteEditor = true
+                } label: {
+                    Image(systemName: "note.text.badge.plus")
+                        .font(.body)
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .padding(AppSpacing.xs)
+                }
+                
+                // Botón para quitar la selección / cerrar el menú
+                Button {
+                    pdfViewReference?.clearSelection()
+                    hasSelection = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.body)
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                        .padding(AppSpacing.xs)
+                }
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.sm)
+            .background(AppColor.surface(for: theme))
+            .clipShape(Capsule())
+            .shadow(color: AppShadow.medium(for: theme).color,
+                    radius: AppShadow.medium(for: theme).radius,
+                    x: AppShadow.medium(for: theme).x,
+                    y: AppShadow.medium(for: theme).y)
+            .padding(.bottom, 90) // Encima de la barra inferior de progreso
+        }
+    }
+
+    private func noteEditorSheet(theme: AppTheme) -> some View {
+        NavigationStack {
+            VStack(spacing: AppSpacing.md) {
+                Picker("Categoría", selection: Binding(
+                    get: { pendingCategory ?? .mainIdea },
+                    set: { pendingCategory = $0 }
+                )) {
+                    ForEach(HighlightCategory.allCases, id: \.self) { cat in
+                        Text(cat.rawValue).tag(cat)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.top, AppSpacing.md)
+                
+                TextEditor(text: $noteBody)
+                    .font(AppTypography.body)
+                    .padding(AppSpacing.sm)
+                    .background(AppColor.surfaceSecondary(for: theme))
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                    .padding(.horizontal, AppSpacing.lg)
+                    .overlay(
+                        VStack {
+                            if noteBody.isEmpty {
+                                HStack {
+                                    Text("Escribe tu nota aquí...")
+                                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                                        .padding(.leading, AppSpacing.xl + 4)
+                                        .padding(.top, AppSpacing.lg)
+                                    Spacer()
+                                }
+                                Spacer()
+                            }
+                        }
+                    )
+                
+                TextField("Etiquetas (separadas por coma, ej: examen, física)", text: $noteTags)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.bottom, AppSpacing.xl)
+            }
+            .background(AppColor.background(for: theme))
+            .navigationTitle("Crear nota vinculada")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancelar") {
+                        showNoteEditor = false
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Guardar") {
+                        let selectedCat = pendingCategory ?? .mainIdea
+                        createHighlight(category: selectedCat, customNoteBody: noteBody)
+                        showNoteEditor = false
+                    }
+                    .disabled(noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
     }
 
