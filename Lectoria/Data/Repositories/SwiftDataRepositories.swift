@@ -442,3 +442,55 @@ public final class SwiftDataSubscriptionRepository: SubscriptionRepository {
         try context.save()
     }
 }
+
+// MARK: - SwiftDataReadingProgressRepository
+
+@MainActor
+public final class SwiftDataReadingProgressRepository: ReadingProgressRepository {
+    private let container: ModelContainer
+    private var context: ModelContext {
+        container.mainContext
+    }
+
+    public init(container: ModelContainer) {
+        self.container = container
+    }
+
+    public func fetchProgress(forPublication publicationID: UUID) async throws -> ReadingProgress? {
+        let descriptor = FetchDescriptor<ReadingProgressModel>(
+            predicate: #Predicate<ReadingProgressModel> { $0.publicationID == publicationID }
+        )
+        let models = try context.fetch(descriptor)
+        return models.first?.toDomain()
+    }
+
+    public func saveProgress(_ progress: ReadingProgress) async throws {
+        let publicationID = progress.publicationID
+        let descriptor = FetchDescriptor<ReadingProgressModel>(
+            predicate: #Predicate<ReadingProgressModel> { $0.publicationID == publicationID }
+        )
+        let existing = try context.fetch(descriptor).first
+
+        if let existing {
+            existing.locatorJSON = progress.locatorJSON
+            existing.percentage = progress.percentage
+            existing.pageNumber = progress.pageNumber
+            existing.chapterTitle = progress.chapterTitle
+            existing.updatedAt = progress.updatedAt
+            existing.deviceID = progress.deviceID
+            existing.version = progress.version
+        } else {
+            let model = ReadingProgressModel.fromDomain(progress)
+            let pubDescriptor = FetchDescriptor<PublicationModel>(
+                predicate: #Predicate<PublicationModel> { $0.id == publicationID }
+            )
+            if let pubModel = try context.fetch(pubDescriptor).first {
+                model.publication = pubModel
+            }
+            context.insert(model)
+        }
+
+        try context.save()
+    }
+}
+

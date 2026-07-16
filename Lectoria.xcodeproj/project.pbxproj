@@ -6,6 +6,15 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		11E29A163D442331D414AFDD /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 88BC20AB21A5BA084C562D02 /* ReadiumStreamer */; };
+		397C93EC03EBDF4A0B1C6FC9 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = DA2BE09099D46FB193E06F0F /* ReadiumShared */; };
+		5DD83B90397D56710B240430 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = 84CCF66D407D3B00815DE6EB /* ReadiumNavigator */; };
+		9C8138840A1555C6F4D2E6AA /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = 6435AE5A5AF95A323A638D3A /* ReadiumStreamer */; };
+		BF3DF58DB4C3301F3FFCAAAD /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = BD41A01702C640325E5E5B54 /* ReadiumShared */; };
+		D56658BD6B7C63F659F5FE01 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = C083BD4B81A510EA45AA6AAA /* ReadiumNavigator */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		F235069830084E1E00F873D4 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +61,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BF3DF58DB4C3301F3FFCAAAD /* ReadiumShared in Frameworks */,
+				11E29A163D442331D414AFDD /* ReadiumStreamer in Frameworks */,
+				D56658BD6B7C63F659F5FE01 /* ReadiumNavigator in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -66,6 +78,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				397C93EC03EBDF4A0B1C6FC9 /* ReadiumShared in Frameworks */,
+				9C8138840A1555C6F4D2E6AA /* ReadiumStreamer in Frameworks */,
+				5DD83B90397D56710B240430 /* ReadiumNavigator in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +127,9 @@
 			);
 			name = Lectoria;
 			packageProductDependencies = (
+				BD41A01702C640325E5E5B54 /* ReadiumShared */,
+				88BC20AB21A5BA084C562D02 /* ReadiumStreamer */,
+				C083BD4B81A510EA45AA6AAA /* ReadiumNavigator */,
 			);
 			productName = Lectoria;
 			productReference = F235068830084E1B00F873D4 /* Lectoria.app */;
@@ -158,6 +176,9 @@
 			);
 			name = LectoriaUITests;
 			packageProductDependencies = (
+				DA2BE09099D46FB193E06F0F /* ReadiumShared */,
+				6435AE5A5AF95A323A638D3A /* ReadiumStreamer */,
+				84CCF66D407D3B00815DE6EB /* ReadiumNavigator */,
 			);
 			productName = LectoriaUITests;
 			productReference = F23506A130084E1E00F873D4 /* LectoriaUITests.xctest */;
@@ -195,6 +216,9 @@
 			);
 			mainGroup = F235067F30084E1A00F873D4;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F235068930084E1B00F873D4 /* Products */;
 			projectDirPath = "";
@@ -605,6 +629,50 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/readium/swift-toolkit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 3.9.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6435AE5A5AF95A323A638D3A /* ReadiumStreamer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumStreamer;
+		};
+		84CCF66D407D3B00815DE6EB /* ReadiumNavigator */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumNavigator;
+		};
+		88BC20AB21A5BA084C562D02 /* ReadiumStreamer */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumStreamer;
+		};
+		BD41A01702C640325E5E5B54 /* ReadiumShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumShared;
+		};
+		C083BD4B81A510EA45AA6AAA /* ReadiumNavigator */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumNavigator;
+		};
+		DA2BE09099D46FB193E06F0F /* ReadiumShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C3951DF5474C6B9ECFD05588 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			productName = ReadiumShared;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F235068030084E1B00F873D4 /* Project object */;
 }

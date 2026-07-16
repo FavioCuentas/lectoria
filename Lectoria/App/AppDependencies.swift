@@ -18,6 +18,7 @@ public final class AppDependencies {
     public let readingSessionRepository: any ReadingSessionRepository
     public let aiUsageRepository: any AIUsageRepository
     public let subscriptionRepository: any SubscriptionRepository
+    public let readingProgressRepository: any ReadingProgressRepository
 
     // Servicios
     public let fileStorageService: FileStorageService
@@ -32,6 +33,7 @@ public final class AppDependencies {
         let sessionRepo = SwiftDataReadingSessionRepository(container: modelContainer)
         let aiRepo = SwiftDataAIUsageRepository(container: modelContainer)
         let subRepo = SwiftDataSubscriptionRepository(container: modelContainer)
+        let progressRepo = SwiftDataReadingProgressRepository(container: modelContainer)
 
         self.publicationRepository = pubRepo
         self.bookmarkRepository = bookmarkRepo
@@ -40,6 +42,7 @@ public final class AppDependencies {
         self.readingSessionRepository = sessionRepo
         self.aiUsageRepository = aiRepo
         self.subscriptionRepository = subRepo
+        self.readingProgressRepository = progressRepo
 
         // Inicializar servicios
         let fileStorage = FileStorageService()

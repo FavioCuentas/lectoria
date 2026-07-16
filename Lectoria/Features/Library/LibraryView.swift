@@ -1,19 +1,21 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - LibraryView
 
 /// Pantalla de biblioteca con cuadrícula/lista, filtros, búsqueda
-/// y estados vacíos.
-///
-/// En Fase 1 muestra un empty state con el Design System.
-/// Los datos reales se conectan en Fase 2 (SwiftData) y Fase 5.
+/// y estados vacíos conectados a base de datos.
 struct LibraryView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppRouter.self) private var router
+    @Environment(\.modelContext) private var modelContext
+
+    @Query(sort: \PublicationModel.createdAt, order: .reverse) private var publicationModels: [PublicationModel]
 
     @State private var searchText = ""
     @State private var isGridView = true
     @State private var selectedFilter: LibraryFilter = .all
+    @State private var selectedPublication: PublicationRecord? = nil
 
     var body: some View {
         let theme = themeManager.currentTheme
@@ -47,6 +49,9 @@ struct LibraryView: View {
             prompt: String(localized: "Buscar por título, autor…",
                           comment: "Library search placeholder")
         )
+        .navigationDestination(item: $selectedPublication) { record in
+            EPUBReaderView(record: record)
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
@@ -94,21 +99,111 @@ struct LibraryView: View {
         }
     }
 
-    // MARK: - Content (placeholder for Fase 5)
+    // MARK: - Content
 
     @ViewBuilder
     private func contentView(theme: AppTheme) -> some View {
-        // Se conectará a datos reales en Fase 5
-        ScrollView {
-            Text("Contenido de biblioteca")
-                .foregroundStyle(AppColor.textTertiary(for: theme))
+        let items = filteredModels
+        
+        if items.isEmpty {
+            VStack(spacing: AppSpacing.md) {
+                Spacer()
+                Image(systemName: "magnifyingglass")
+                    .font(.largeTitle)
+                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                Text("No hay resultados")
+                    .font(AppTypography.callout)
+                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                if isGridView {
+                    let columns = [
+                        GridItem(.flexible(), spacing: AppSpacing.lg),
+                        GridItem(.flexible(), spacing: AppSpacing.lg)
+                    ]
+                    
+                    LazyVGrid(columns: columns, spacing: AppSpacing.xl) {
+                        ForEach(items) { model in
+                            let record = model.toDomain()
+                            let progress = model.progressList.max(by: { $0.updatedAt < $1.updatedAt })?.percentage ?? 0.0
+                            
+                            PublicationCard(
+                                publication: record,
+                                style: .grid,
+                                progress: progress
+                            ) {
+                                selectedPublication = record
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.vertical, AppSpacing.md)
+                } else {
+                    LazyVStack(spacing: AppSpacing.md) {
+                        ForEach(items) { model in
+                            let record = model.toDomain()
+                            let progress = model.progressList.max(by: { $0.updatedAt < $1.updatedAt })?.percentage ?? 0.0
+                            
+                            PublicationCard(
+                                publication: record,
+                                style: .list,
+                                progress: progress
+                            ) {
+                                selectedPublication = record
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.vertical, AppSpacing.md)
+                }
+            }
         }
     }
 
     // MARK: - Helpers
 
-    /// En Fase 1 siempre es false. Se conecta a datos en Fase 2.
-    private var hasDocuments: Bool { false }
+    private var hasDocuments: Bool {
+        !publicationModels.isEmpty
+    }
+
+    private var filteredModels: [PublicationModel] {
+        publicationModels.filter { model in
+            let record = model.toDomain()
+            
+            // Filtro de búsqueda por texto
+            if !searchText.isEmpty {
+                let matchesSearch = record.title.localizedCaseInsensitiveContains(searchText) ||
+                    (record.author?.localizedCaseInsensitiveContains(searchText) ?? false)
+                guard matchesSearch else { return false }
+            }
+            
+            // Filtro por tipo o estado
+            switch selectedFilter {
+            case .all:
+                return true
+            case .epub:
+                return record.publicationType == .epub
+            case .pdf:
+                return record.publicationType == .pdf
+            case .txt:
+                return record.publicationType == .txt
+            case .markdown:
+                return record.publicationType == .markdown
+            case .inProgress:
+                let progress = model.progressList.max(by: { $0.updatedAt < $1.updatedAt })?.percentage ?? 0.0
+                return progress > 0.0 && progress < 1.0
+            case .finished:
+                return record.finishedAt != nil
+            case .notStarted:
+                return model.progressList.isEmpty
+            case .favorites:
+                return record.isFavorite
+            }
+        }
+    }
 }
 
 // MARK: - LibraryFilter
@@ -154,16 +249,4 @@ enum LibraryFilter: String, CaseIterable, Identifiable, Sendable {
         case .favorites: "heart"
         }
     }
-}
-
-// MARK: - Preview
-
-#Preview("Library - Empty") {
-    let themeManager = ThemeManager()
-    let router = AppRouter()
-    NavigationStack {
-        LibraryView()
-    }
-    .environment(themeManager)
-    .environment(router)
 }
