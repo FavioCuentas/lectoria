@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // MARK: - LectoriaApp
 
@@ -8,12 +9,24 @@ import SwiftUI
 /// - Si el usuario no ha completado el onboarding, muestra `OnboardingView`.
 /// - Si ya lo completó, muestra `RootView` con los 4 tabs.
 ///
-/// Inyecta `ThemeManager` y `AppRouter` en el environment.
+/// Inyecta `ThemeManager`, `AppRouter`, `modelContainer` y `AppDependencies` en el environment.
 @main
 struct LectoriaApp: App {
     @State private var themeManager = ThemeManager()
     @State private var router = AppRouter()
+    @State private var dependencies: AppDependencies
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    
+    private let modelContainer: ModelContainer
+
+    init() {
+        // Inicializar el contenedor de SwiftData (producción en disco)
+        let container = ModelContainerFactory.create(isStoredInMemoryOnly: false)
+        self.modelContainer = container
+        
+        // Inicializar el contenedor de dependencias del negocio
+        self._dependencies = State(initialValue: AppDependencies(modelContainer: container))
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -30,6 +43,8 @@ struct LectoriaApp: App {
             }
             .environment(themeManager)
             .environment(router)
+            .environment(dependencies)
+            .modelContainer(modelContainer)
         }
     }
 }

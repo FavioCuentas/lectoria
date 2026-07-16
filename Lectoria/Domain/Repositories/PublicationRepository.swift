@@ -7,7 +7,7 @@ import Foundation
 /// Las implementaciones concretas (SwiftData en Fase 2, mock para tests)
 /// deben conformar este protocolo. La capa de Features depende únicamente
 /// de esta abstracción, nunca de una implementación concreta.
-protocol PublicationRepository: Sendable {
+public protocol PublicationRepository: Sendable {
     /// Obtiene todas las publicaciones del usuario.
     func fetchAll() async throws -> [PublicationRecord]
 

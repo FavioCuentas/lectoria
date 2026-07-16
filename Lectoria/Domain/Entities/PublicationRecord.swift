@@ -3,7 +3,7 @@ import Foundation
 // MARK: - IndexingStatus
 
 /// Estado de indexación del contenido textual de una publicación.
-enum IndexingStatus: String, Codable, Sendable {
+public enum IndexingStatus: String, Codable, Sendable {
     case pending
     case indexing
     case completed
@@ -14,7 +14,7 @@ enum IndexingStatus: String, Codable, Sendable {
 // MARK: - SyncStatus
 
 /// Estado de sincronización con el backend.
-enum SyncStatus: String, Codable, Sendable {
+public enum SyncStatus: String, Codable, Sendable {
     case local
     case pendingUpload
     case synced
@@ -25,48 +25,93 @@ enum SyncStatus: String, Codable, Sendable {
 // MARK: - PublicationRecord
 
 /// Representa una publicación almacenada en la biblioteca del usuario.
-///
-/// En Fase 0-1 esta entidad es un `struct` simple. En Fase 2 se
-/// migrará a un `@Model` de SwiftData manteniendo la misma forma.
-struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
-    let id: UUID
-    var ownerID: String?
-    var title: String
-    var author: String?
-    var publicationType: PublicationType
-    var localFileName: String
-    var originalFileName: String?
-    var mimeType: String
-    var fileSize: Int64
-    var sha256: String
-    var coverPath: String?
-    var language: String?
-    var createdAt: Date
-    var importedAt: Date
-    var lastOpenedAt: Date?
-    var finishedAt: Date?
-    var isFavorite: Bool
-    var isArchived: Bool
-    var isCloudBackedUp: Bool
-    var indexingStatus: IndexingStatus
-    var syncStatus: SyncStatus
+public struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
+    public let id: UUID
+    public var ownerID: String?
+    public var title: String
+    public var author: String?
+    public var publicationType: PublicationType
+    public var localFileName: String
+    public var originalFileName: String?
+    public var mimeType: String
+    public var fileSize: Int64
+    public var sha256: String
+    public var coverPath: String?
+    public var language: String?
+    public var createdAt: Date
+    public var importedAt: Date
+    public var lastOpenedAt: Date?
+    public var finishedAt: Date?
+    public var isFavorite: Bool
+    public var isArchived: Bool
+    public var isCloudBackedUp: Bool
+    public var indexingStatus: IndexingStatus
+    public var syncStatus: SyncStatus
+
+    // MARK: - Initializer
+
+    public init(
+        id: UUID,
+        ownerID: String? = nil,
+        title: String,
+        author: String? = nil,
+        publicationType: PublicationType,
+        localFileName: String,
+        originalFileName: String? = nil,
+        mimeType: String,
+        fileSize: Int64,
+        sha256: String,
+        coverPath: String? = nil,
+        language: String? = nil,
+        createdAt: Date = .now,
+        importedAt: Date = .now,
+        lastOpenedAt: Date? = nil,
+        finishedAt: Date? = nil,
+        isFavorite: Bool = false,
+        isArchived: Bool = false,
+        isCloudBackedUp: Bool = false,
+        indexingStatus: IndexingStatus = .pending,
+        syncStatus: SyncStatus = .local
+    ) {
+        self.id = id
+        self.ownerID = ownerID
+        self.title = title
+        self.author = author
+        self.publicationType = publicationType
+        self.localFileName = localFileName
+        self.originalFileName = originalFileName
+        self.mimeType = mimeType
+        self.fileSize = fileSize
+        self.sha256 = sha256
+        self.coverPath = coverPath
+        self.language = language
+        self.createdAt = createdAt
+        self.importedAt = importedAt
+        self.lastOpenedAt = lastOpenedAt
+        self.finishedAt = finishedAt
+        self.isFavorite = isFavorite
+        self.isArchived = isArchived
+        self.isCloudBackedUp = isCloudBackedUp
+        self.indexingStatus = indexingStatus
+        self.syncStatus = syncStatus
+    }
 
     // MARK: - Computed
 
     /// Indica si el usuario ha comenzado a leer esta publicación.
-    var hasBeenOpened: Bool {
+    public var hasBeenOpened: Bool {
         lastOpenedAt != nil
     }
 
     /// Indica si la publicación está marcada como terminada.
-    var isFinished: Bool {
+    public var isFinished: Bool {
         finishedAt != nil
     }
 
     // MARK: - Factory
 
     /// Crea un registro con valores por defecto para una nueva importación.
-    static func newImport(
+    public static func newImport(
         title: String,
         author: String? = nil,
         publicationType: PublicationType,
@@ -108,7 +153,7 @@ struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
 #if DEBUG
 extension PublicationRecord {
     /// Fixture para previews y tests.
-    static let previewEPUB = PublicationRecord.newImport(
+    public static let previewEPUB = PublicationRecord.newImport(
         title: "Cien años de soledad",
         author: "Gabriel García Márquez",
         publicationType: .epub,
@@ -120,7 +165,7 @@ extension PublicationRecord {
         language: "es"
     )
 
-    static let previewPDF = PublicationRecord.newImport(
+    public static let previewPDF = PublicationRecord.newImport(
         title: "Apuntes de Física Cuántica",
         author: "Dr. María López",
         publicationType: .pdf,
@@ -132,7 +177,7 @@ extension PublicationRecord {
         language: "es"
     )
 
-    static let previewTXT = PublicationRecord.newImport(
+    public static let previewTXT = PublicationRecord.newImport(
         title: "Notas de investigación",
         publicationType: .txt,
         localFileName: "notas.txt",
@@ -141,7 +186,7 @@ extension PublicationRecord {
         sha256: "ghi789preview"
     )
 
-    static let previewMarkdown = PublicationRecord.newImport(
+    public static let previewMarkdown = PublicationRecord.newImport(
         title: "Guía de estilo del proyecto",
         author: "Equipo de desarrollo",
         publicationType: .markdown,
@@ -151,7 +196,7 @@ extension PublicationRecord {
         sha256: "jkl012preview"
     )
 
-    static let previewPastedText = PublicationRecord.newImport(
+    public static let previewPastedText = PublicationRecord.newImport(
         title: "Extracto del artículo sobre IA",
         publicationType: .pastedText,
         localFileName: "extracto-ia.txt",
@@ -161,7 +206,7 @@ extension PublicationRecord {
     )
 
     /// Colección de previews diversos.
-    static let previewCollection: [PublicationRecord] = [
+    public static let previewCollection: [PublicationRecord] = [
         .previewEPUB,
         .previewPDF,
         .previewTXT,
