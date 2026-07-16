@@ -50,7 +50,14 @@ struct LibraryView: View {
                           comment: "Library search placeholder")
         )
         .navigationDestination(item: $selectedPublication) { record in
-            EPUBReaderView(record: record)
+            switch record.publicationType {
+            case .pdf:
+                PDFReaderView(record: record)
+            case .epub:
+                EPUBReaderView(record: record)
+            case .txt, .markdown, .pastedText:
+                TextReaderView(record: record)
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
