@@ -140,6 +140,10 @@ public final class SwiftDataBookmarkRepository: BookmarkRepository {
         )
         if let existing = try context.fetch(descriptor).first {
             context.delete(existing)
+            
+            let op = SyncOperationModel(entityType: "bookmark", entityID: id.uuidString, action: "delete", payload: "")
+            context.insert(op)
+            
             try context.save()
         }
     }
@@ -222,6 +226,10 @@ public final class SwiftDataHighlightRepository: HighlightRepository {
         )
         if let existing = try context.fetch(descriptor).first {
             context.delete(existing)
+            
+            let op = SyncOperationModel(entityType: "highlight", entityID: id.uuidString, action: "delete", payload: "")
+            context.insert(op)
+            
             try context.save()
         }
     }
@@ -312,6 +320,10 @@ public final class SwiftDataNoteRepository: NoteRepository {
         )
         if let existing = try context.fetch(descriptor).first {
             context.delete(existing)
+            
+            let op = SyncOperationModel(entityType: "note", entityID: id.uuidString, action: "delete", payload: "")
+            context.insert(op)
+            
             try context.save()
         }
     }

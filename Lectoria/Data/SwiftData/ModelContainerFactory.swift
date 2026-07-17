@@ -20,7 +20,8 @@ public enum ModelContainerFactory {
             NoteModel.self,
             ReadingSessionModel.self,
             AIUsageModel.self,
-            SubscriptionEntitlementModel.self
+            SubscriptionEntitlementModel.self,
+            SyncOperationModel.self
         ])
         
         let configuration = ModelConfiguration(

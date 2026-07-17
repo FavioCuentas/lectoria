@@ -42,6 +42,21 @@ struct ProfileView: View {
 
                         Divider()
 
+                        let isSyncing = dependencies.syncService.isSyncing
+                        let lastSync = dependencies.syncService.lastSyncedAt
+                        
+                        SettingsRow(
+                            icon: "arrow.triangle.2.circlepath",
+                            title: String(localized: "Sincronizar ahora", comment: "Profile: manual sync action"),
+                            variant: .value(isSyncing ? String(localized: "Sincronizando...", comment: "Sync status: active") : (lastSync != nil ? String(localized: "Sincronizado", comment: "Sync status: done") : String(localized: "Nunca", comment: "Sync status: never")))
+                        ) {
+                            Task {
+                                try? await dependencies.syncService.syncAll()
+                            }
+                        }
+
+                        Divider()
+
                         SettingsRow(
                             icon: "arrow.left.square",
                             title: String(localized: "Cerrar sesión", comment: "Profile: sign out action"),
@@ -264,9 +279,10 @@ struct ProfileView: View {
                         fullName: fullName
                     )
 
-                    // Realizar la migración de datos de invitado a la cuenta
+                    // Realizar la migración de datos de invitado a la cuenta y sincronizar
                     if let user = dependencies.authService.currentUser {
                         await dependencies.migrateGuestData(to: user.id)
+                        try? await dependencies.syncService.performInitialSync()
                     }
 
                     isProcessing = false

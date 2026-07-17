@@ -336,6 +336,34 @@ public final class SubscriptionEntitlementModel {
     }
 }
 
+// MARK: - SyncOperationModel
+
+@Model
+public final class SyncOperationModel {
+    @Attribute(.unique) public var id: UUID
+    public var entityType: String
+    public var entityID: String
+    public var action: String
+    public var payload: String
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        entityType: String,
+        entityID: String,
+        action: String,
+        payload: String,
+        createdAt: Date = .now
+    ) {
+        self.id = id
+        self.entityType = entityType
+        self.entityID = entityID
+        self.action = action
+        self.payload = payload
+        self.createdAt = createdAt
+    }
+}
+
 // MARK: - Domain Mapping Extensions
 
 extension PublicationModel {

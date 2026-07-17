@@ -11,18 +11,7 @@ struct AnnotationTests {
 
     init() {
         // Inicializar contenedor in-memory para base de datos de test
-        let schema = Schema([
-            PublicationModel.self,
-            BookmarkModel.self,
-            HighlightModel.self,
-            NoteModel.self,
-            ReadingProgressModel.self,
-            ReadingSessionModel.self,
-            AIUsageModel.self,
-            SubscriptionEntitlementModel.self
-        ])
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        self.container = try! ModelContainer(for: schema, configurations: config)
+        self.container = ModelContainerFactory.create(isStoredInMemoryOnly: true)
     }
 
     @Test("Highlight CRUD operations including fetchAll")

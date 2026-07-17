@@ -27,12 +27,14 @@ public final class AppDependencies {
     public let subscriptionService: any SubscriptionService
     public let entitlementService: any FeatureEntitlementService
     public let aiService: any AIService
+    public let syncService: any SyncService
 
     public init(
         modelContainer: ModelContainer,
         authService: (any AuthService)? = nil,
         subscriptionService: (any SubscriptionService)? = nil,
-        aiService: (any AIService)? = nil
+        aiService: (any AIService)? = nil,
+        syncService: (any SyncService)? = nil
     ) {
         // Inicializar repositorios persistentes usando SwiftData
         let pubRepo = SwiftDataPublicationRepository(container: modelContainer)
@@ -79,6 +81,8 @@ public final class AppDependencies {
         )
         
         self.aiService = aiService ?? SupabaseAIService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+        
+        self.syncService = syncService ?? SupabaseSyncService(container: modelContainer, authService: self.authService, supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
     }
 
     /// Migra todas las publicaciones locales y consumos de IA huérfanos (de invitado) al nuevo ID de usuario.
@@ -110,7 +114,8 @@ public final class AppDependencies {
             modelContainer: container,
             authService: MockAuthService(),
             subscriptionService: MockSubscriptionService(),
-            aiService: MockAIService()
+            aiService: MockAIService(),
+            syncService: MockSyncService()
         )
     }
     #endif
