@@ -38,6 +38,7 @@ public final class SwiftDataPublicationRepository: PublicationRepository {
         let existing = try context.fetch(descriptor).first
         
         if let existing {
+            existing.ownerID = publication.ownerID
             existing.title = publication.title
             existing.author = publication.author
             existing.publicationTypeRaw = publication.publicationType.rawValue

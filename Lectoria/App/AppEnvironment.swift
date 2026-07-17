@@ -44,6 +44,14 @@ struct AppEnvironment: Sendable {
         }
     }
 
+    var supabaseAnonKey: String {
+        switch buildEnvironment {
+        case .development: "fake_dev_anon_key"
+        case .staging: "fake_staging_anon_key"
+        case .production: "fake_prod_anon_key"
+        }
+    }
+
     // MARK: - Feature flags (valores por defecto, actualizables remotamente)
 
     /// Número máximo de documentos para el plan gratuito.

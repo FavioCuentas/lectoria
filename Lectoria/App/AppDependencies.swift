@@ -23,8 +23,9 @@ public final class AppDependencies {
     // Servicios
     public let fileStorageService: FileStorageService
     public let importService: ImportService
+    public let authService: any AuthService
 
-    public init(modelContainer: ModelContainer) {
+    public init(modelContainer: ModelContainer, authService: (any AuthService)? = nil) {
         // Inicializar repositorios persistentes usando SwiftData
         let pubRepo = SwiftDataPublicationRepository(container: modelContainer)
         let bookmarkRepo = SwiftDataBookmarkRepository(container: modelContainer)
@@ -52,13 +53,37 @@ public final class AppDependencies {
             publicationRepository: pubRepo,
             fileStorageService: fileStorage
         )
+        
+        let env = AppEnvironment.current()
+        self.authService = authService ?? SupabaseAuthService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+    }
+
+    /// Migra todas las publicaciones locales y consumos de IA huérfanos (de invitado) al nuevo ID de usuario.
+    public func migrateGuestData(to userID: String) async {
+        if let pubs = try? await publicationRepository.fetchAll() {
+            for var pub in pubs {
+                if pub.ownerID == nil {
+                    pub.ownerID = userID
+                    try? await publicationRepository.save(pub)
+                }
+            }
+        }
+
+        if let usages = try? await aiUsageRepository.fetchAll() {
+            for var usage in usages {
+                if usage.userID == nil {
+                    usage.userID = userID
+                    try? await aiUsageRepository.save(usage)
+                }
+            }
+        }
     }
 
     #if DEBUG
     /// Inicializador mock/in-memory para previews de SwiftUI y pruebas rápidas.
     public static var preview: AppDependencies {
         let container = ModelContainerFactory.create(isStoredInMemoryOnly: true)
-        return AppDependencies(modelContainer: container)
+        return AppDependencies(modelContainer: container, authService: MockAuthService())
     }
     #endif
 }
