@@ -107,6 +107,19 @@ struct ProfileView: View {
                     )
                 }
 
+                // Sección: Inteligencia Artificial
+                profileSection(theme: theme) {
+                    let consentBinding = Binding<Bool>(
+                        get: { dependencies.aiService.hasConsentedToAI },
+                        set: { dependencies.aiService.hasConsentedToAI = $0 }
+                    )
+                    SettingsRow(
+                        icon: "sparkles",
+                        title: String(localized: "Consentimiento de IA", comment: "Profile: AI consent toggle"),
+                        variant: .toggle(consentBinding)
+                    )
+                }
+
                 // Sección: Datos
                 profileSection(theme: theme) {
                     SettingsRow(

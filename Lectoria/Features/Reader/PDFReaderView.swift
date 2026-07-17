@@ -39,6 +39,9 @@ struct PDFReaderView: View {
     @State private var noteTags = ""
     @State private var pendingCategory: HighlightCategory? = nil
     @State private var showPaywall = false
+    @State private var showConsent = false
+    @State private var showAIResponse = false
+    @State private var pendingAIAction: String? = nil
 
     init(record: PublicationRecord, initialLocation: PDFLocation? = nil) {
         self.record = record
@@ -314,6 +317,25 @@ struct PDFReaderView: View {
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
+        }
+        .sheet(isPresented: $showConsent) {
+            AIConsentView { accepted in
+                if accepted, let pending = pendingAIAction {
+                    showAIResponse = true
+                }
+            }
+        }
+        .sheet(isPresented: $showAIResponse) {
+            if let action = pendingAIAction {
+                AIResponseSheet(
+                    actionName: action,
+                    textToProcess: selectedText,
+                    targetLanguage: action == "translate" ? "en" : nil,
+                    onSaveAsNote: { responseText in
+                        createHighlight(category: .mainIdea, customNoteBody: responseText)
+                    }
+                )
+            }
         }
     }
 
@@ -709,6 +731,30 @@ struct PDFReaderView: View {
             await loadHighlights()
         }
     }
+    
+    private func triggerAIAction(_ actionName: String) {
+        Task {
+            let canPerform = await dependencies.entitlementService.canPerformAction(.performAIAction)
+            guard canPerform else {
+                await MainActor.run {
+                    self.showPaywall = true
+                }
+                return
+            }
+            
+            if !dependencies.aiService.hasConsentedToAI {
+                await MainActor.run {
+                    self.pendingAIAction = actionName
+                    self.showConsent = true
+                }
+            } else {
+                await MainActor.run {
+                    self.pendingAIAction = actionName
+                    self.showAIResponse = true
+                }
+            }
+        }
+    }
 
     private func selectionFloatingToolbar(theme: AppTheme) -> some View {
         VStack {
@@ -756,6 +802,31 @@ struct PDFReaderView: View {
                     Image(systemName: "xmark")
                         .font(.body)
                         .foregroundStyle(AppColor.textSecondary(for: theme))
+                        .padding(AppSpacing.xs)
+                }
+                
+                Divider()
+                    .frame(height: 24)
+                    .background(AppColor.border(for: theme))
+                
+                // Menú de IA
+                Menu {
+                    Button(action: { triggerAIAction("explain") }) {
+                        Label("Explicar con IA", systemImage: "sparkles")
+                    }
+                    Button(action: { triggerAIAction("simplify") }) {
+                        Label("Simplificar", systemImage: "text.alignleft")
+                    }
+                    Button(action: { triggerAIAction("translate") }) {
+                        Label("Traducir", systemImage: "translate")
+                    }
+                    Button(action: { triggerAIAction("generateQuestions") }) {
+                        Label("Crear pregunta", systemImage: "questionmark.circle")
+                    }
+                } label: {
+                    Image(systemName: "sparkles")
+                        .font(.body)
+                        .foregroundStyle(AppColor.accent(for: theme))
                         .padding(AppSpacing.xs)
                 }
             }

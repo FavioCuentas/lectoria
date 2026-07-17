@@ -35,6 +35,10 @@ struct TextReaderView: View {
     @State private var pendingCategory: HighlightCategory? = nil
     @State private var selectedBlockIndex: Int? = nil
     @State private var showPaywall = false
+    @State private var showConsent = false
+    @State private var showAIResponse = false
+    @State private var pendingAIAction: String? = nil
+    @State private var textToProcess = ""
 
     init(record: PublicationRecord, initialLocation: TextLocation? = nil) {
         self.record = record
@@ -308,6 +312,29 @@ struct TextReaderView: View {
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
+        .sheet(isPresented: $showConsent) {
+            AIConsentView { accepted in
+                if accepted, let pending = pendingAIAction {
+                    showAIResponse = true
+                }
+            }
+        }
+        .sheet(isPresented: $showAIResponse) {
+            if let action = pendingAIAction {
+                AIResponseSheet(
+                    actionName: action,
+                    textToProcess: textToProcess,
+                    targetLanguage: action == "translate" ? "en" : nil,
+                    onSaveAsNote: { responseText in
+                        if let idx = selectedBlockIndex {
+                            createHighlight(category: .mainIdea, blockIndex: idx, text: textToProcess, customNoteBody: responseText)
+                        } else {
+                            createHighlight(category: .mainIdea, blockIndex: 0, text: textToProcess, customNoteBody: responseText)
+                        }
+                    }
+                )
+            }
+        }
     }
 
     // MARK: - Block rendering in SwiftUI
@@ -405,6 +432,23 @@ struct TextReaderView: View {
                     showNoteEditor = true
                 } label: {
                     Label("Añadir nota", systemImage: "note.text.badge.plus")
+                }
+            }
+            
+            Divider()
+            
+            Menu("Lectoria AI") {
+                Button(action: { triggerAIAction("explain", text: block.rawText, blockIndex: block.index) }) {
+                    Label("Explicar con IA", systemImage: "sparkles")
+                }
+                Button(action: { triggerAIAction("simplify", text: block.rawText, blockIndex: block.index) }) {
+                    Label("Simplificar", systemImage: "text.alignleft")
+                }
+                Button(action: { triggerAIAction("translate", text: block.rawText, blockIndex: block.index) }) {
+                    Label("Traducir", systemImage: "translate")
+                }
+                Button(action: { triggerAIAction("generateQuestions", text: block.rawText, blockIndex: block.index) }) {
+                    Label("Crear pregunta", systemImage: "questionmark.circle")
                 }
             }
         }
@@ -877,6 +921,34 @@ struct TextReaderView: View {
             }
             
             await loadHighlights()
+        }
+    }
+    
+    private func triggerAIAction(_ actionName: String, text: String, blockIndex: Int) {
+        Task {
+            let canPerform = await dependencies.entitlementService.canPerformAction(.performAIAction)
+            guard canPerform else {
+                await MainActor.run {
+                    self.showPaywall = true
+                }
+                return
+            }
+            
+            if !dependencies.aiService.hasConsentedToAI {
+                await MainActor.run {
+                    self.textToProcess = text
+                    self.selectedBlockIndex = blockIndex
+                    self.pendingAIAction = actionName
+                    self.showConsent = true
+                }
+            } else {
+                await MainActor.run {
+                    self.textToProcess = text
+                    self.selectedBlockIndex = blockIndex
+                    self.pendingAIAction = actionName
+                    self.showAIResponse = true
+                }
+            }
         }
     }
 
