@@ -57,6 +57,9 @@ final class AppRouter {
     /// Tab actualmente seleccionado.
     var selectedTab: AppTab = .home
 
+    /// Publicación seleccionada para lectura.
+    var selectedPublication: PublicationRecord? = nil
+
     /// Indica si debe mostrar el sheet de importación.
     var isShowingImport = false
 

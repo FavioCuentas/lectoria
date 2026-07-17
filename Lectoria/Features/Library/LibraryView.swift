@@ -15,9 +15,9 @@ struct LibraryView: View {
     @State private var searchText = ""
     @State private var isGridView = true
     @State private var selectedFilter: LibraryFilter = .all
-    @State private var selectedPublication: PublicationRecord? = nil
 
     var body: some View {
+        @Bindable var router = router
         let theme = themeManager.currentTheme
 
         VStack(spacing: 0) {
@@ -49,7 +49,7 @@ struct LibraryView: View {
             prompt: String(localized: "Buscar por título, autor…",
                           comment: "Library search placeholder")
         )
-        .navigationDestination(item: $selectedPublication) { record in
+        .navigationDestination(item: $router.selectedPublication) { record in
             switch record.publicationType {
             case .pdf:
                 PDFReaderView(record: record)
@@ -142,7 +142,7 @@ struct LibraryView: View {
                                 style: .grid,
                                 progress: progress
                             ) {
-                                selectedPublication = record
+                                router.selectedPublication = record
                             }
                         }
                     }
@@ -159,7 +159,7 @@ struct LibraryView: View {
                                 style: .list,
                                 progress: progress
                             ) {
-                                selectedPublication = record
+                                router.selectedPublication = record
                             }
                         }
                     }

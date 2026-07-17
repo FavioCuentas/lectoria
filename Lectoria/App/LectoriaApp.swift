@@ -45,6 +45,35 @@ struct LectoriaApp: App {
             .environment(router)
             .environment(dependencies)
             .modelContainer(modelContainer)
+            .onOpenURL { url in
+                handleOpenURL(url)
+            }
+        }
+    }
+
+    private func handleOpenURL(_ url: URL) {
+        Task {
+            do {
+                if url.isFileURL {
+                    let record = try await dependencies.importService.importPublication(from: url)
+                    router.selectedTab = .library
+                    router.selectedPublication = record
+                } else if url.scheme == "lectoria", url.host == "import-text" {
+                    if let components = URLComponents(url: url, resolvingAgainstBaseURL: true),
+                       let queryItems = components.queryItems {
+                        let text = queryItems.first(where: { $0.name == "text" })?.value ?? ""
+                        let title = queryItems.first(where: { $0.name == "title" })?.value ?? String(localized: "Texto importado", comment: "Sync: imported text title fallback")
+                        
+                        if !text.isEmpty {
+                            let record = try await dependencies.importService.importPastedText(text: text, title: title)
+                            router.selectedTab = .library
+                            router.selectedPublication = record
+                        }
+                    }
+                }
+            } catch {
+                print("Error al importar desde URL externa: \(error.localizedDescription)")
+            }
         }
     }
 }
