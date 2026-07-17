@@ -17,6 +17,7 @@ struct ProfileView: View {
     @State private var showSignOutAlert = false
     @State private var showDeleteAlert = false
     @State private var showErrorAlert = false
+    @State private var showPaywall = false
     @State private var errorMessage: String? = nil
 
     var body: some View {
@@ -74,11 +75,16 @@ struct ProfileView: View {
 
                     Divider()
 
+                    let isPremium = dependencies.subscriptionService.hasActiveSubscription
                     SettingsRow(
                         icon: "crown",
                         title: String(localized: "Plan", comment: "Profile: subscription plan"),
-                        variant: .value(String(localized: "Gratuito", comment: "Profile: free plan"))
-                    ) {}
+                        variant: .value(isPremium ? String(localized: "Premium", comment: "Profile: premium plan") : String(localized: "Gratuito", comment: "Profile: free plan"))
+                    ) {
+                        if !isPremium {
+                            showPaywall = true
+                        }
+                    }
                 }
 
                 // Sección: Apariencia
@@ -196,6 +202,9 @@ struct ProfileView: View {
             if let errorMessage {
                 Text(errorMessage)
             }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
         }
     }
 

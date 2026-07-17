@@ -38,6 +38,7 @@ struct PDFReaderView: View {
     @State private var noteBody = ""
     @State private var noteTags = ""
     @State private var pendingCategory: HighlightCategory? = nil
+    @State private var showPaywall = false
 
     init(record: PublicationRecord, initialLocation: PDFLocation? = nil) {
         self.record = record
@@ -310,6 +311,9 @@ struct PDFReaderView: View {
         }
         .sheet(isPresented: $showSearch) {
             searchSheet(theme: theme)
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
         }
     }
 
@@ -659,6 +663,26 @@ struct PDFReaderView: View {
         )
         
         Task {
+            // Validar límites del plan gratuito
+            let canHighlight = await dependencies.entitlementService.canPerformAction(.createHighlight)
+            guard canHighlight else {
+                await MainActor.run {
+                    self.showPaywall = true
+                }
+                return
+            }
+            
+            // Si hay una nota asociada, validar límites de notas
+            if let customNoteBody, !customNoteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let canNote = await dependencies.entitlementService.canPerformAction(.createNote)
+                guard canNote else {
+                    await MainActor.run {
+                        self.showPaywall = true
+                    }
+                    return
+                }
+            }
+
             // Guardar el destacado
             try? await dependencies.highlightRepository.save(highlight)
             

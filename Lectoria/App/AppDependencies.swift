@@ -24,8 +24,14 @@ public final class AppDependencies {
     public let fileStorageService: FileStorageService
     public let importService: ImportService
     public let authService: any AuthService
+    public let subscriptionService: any SubscriptionService
+    public let entitlementService: any FeatureEntitlementService
 
-    public init(modelContainer: ModelContainer, authService: (any AuthService)? = nil) {
+    public init(
+        modelContainer: ModelContainer,
+        authService: (any AuthService)? = nil,
+        subscriptionService: (any SubscriptionService)? = nil
+    ) {
         // Inicializar repositorios persistentes usando SwiftData
         let pubRepo = SwiftDataPublicationRepository(container: modelContainer)
         let bookmarkRepo = SwiftDataBookmarkRepository(container: modelContainer)
@@ -49,13 +55,26 @@ public final class AppDependencies {
         let fileStorage = FileStorageService()
         self.fileStorageService = fileStorage
 
-        self.importService = ImportService(
-            publicationRepository: pubRepo,
-            fileStorageService: fileStorage
-        )
-        
         let env = AppEnvironment.current()
         self.authService = authService ?? SupabaseAuthService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+
+        let subService = subscriptionService ?? StoreKitSubscriptionService(repository: subRepo)
+        self.subscriptionService = subService
+        
+        let entitlement = DefaultFeatureEntitlementService(
+            publicationRepository: pubRepo,
+            highlightRepository: highlightRepo,
+            noteRepository: noteRepo,
+            aiUsageRepository: aiRepo,
+            subscriptionService: subService
+        )
+        self.entitlementService = entitlement
+
+        self.importService = ImportService(
+            publicationRepository: pubRepo,
+            fileStorageService: fileStorage,
+            entitlementService: entitlement
+        )
     }
 
     /// Migra todas las publicaciones locales y consumos de IA huérfanos (de invitado) al nuevo ID de usuario.
@@ -83,7 +102,11 @@ public final class AppDependencies {
     /// Inicializador mock/in-memory para previews de SwiftUI y pruebas rápidas.
     public static var preview: AppDependencies {
         let container = ModelContainerFactory.create(isStoredInMemoryOnly: true)
-        return AppDependencies(modelContainer: container, authService: MockAuthService())
+        return AppDependencies(
+            modelContainer: container,
+            authService: MockAuthService(),
+            subscriptionService: MockSubscriptionService()
+        )
     }
     #endif
 }

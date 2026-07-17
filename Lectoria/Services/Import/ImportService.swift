@@ -8,6 +8,7 @@ public enum ImportError: LocalizedError, Sendable {
     case securityAccessFailed
     case fileAccessFailed(String)
     case metadataExtractionFailed
+    case limitExceeded(String)
 
     public var errorDescription: String? {
         switch self {
@@ -21,6 +22,8 @@ public enum ImportError: LocalizedError, Sendable {
             return String(localized: "Error al acceder al archivo: \(msg)", comment: "Error message")
         case .metadataExtractionFailed:
             return String(localized: "No se pudieron extraer los metadatos del archivo.", comment: "Error message")
+        case .limitExceeded(let msg):
+            return msg
         }
     }
 }
@@ -33,17 +36,20 @@ public final class ImportService: Sendable {
     private let fileStorageService: FileStorageService
     private let metadataExtractor: DocumentMetadataExtractor
     private let coverGenerator: CoverGenerator
+    private let entitlementService: (any FeatureEntitlementService)?
 
     public init(
         publicationRepository: any PublicationRepository,
         fileStorageService: FileStorageService = FileStorageService(),
         metadataExtractor: DocumentMetadataExtractor = DocumentMetadataExtractor(),
-        coverGenerator: CoverGenerator = CoverGenerator()
+        coverGenerator: CoverGenerator = CoverGenerator(),
+        entitlementService: (any FeatureEntitlementService)? = nil
     ) {
         self.publicationRepository = publicationRepository
         self.fileStorageService = fileStorageService
         self.metadataExtractor = metadataExtractor
         self.coverGenerator = coverGenerator
+        self.entitlementService = entitlementService
     }
 
     /// Importa un archivo a partir de una URL local (puede ser un recurso de seguridad externa de iOS).
@@ -51,6 +57,15 @@ public final class ImportService: Sendable {
     /// - Returns: El registro `PublicationRecord` creado e insertado en la persistencia.
     @MainActor
     public func importPublication(from url: URL) async throws -> PublicationRecord {
+        // Validar límite del plan gratuito
+        if let entitlementService {
+            let canImport = await entitlementService.canPerformAction(.importDocument)
+            if !canImport {
+                let limits = await entitlementService.getLimits()
+                throw ImportError.limitExceeded(String(localized: "Has alcanzado el límite de tu plan gratuito (\(limits.documentsLimit) documentos). Suscríbete a Premium para importar de forma ilimitada.", comment: "Limit exceeded error"))
+            }
+        }
+
         // 1. Validar el formato del archivo por su extensión
         let ext = url.pathExtension.lowercased()
         guard let publicationType = PublicationType.from(fileExtension: ext) else {
@@ -143,6 +158,15 @@ public final class ImportService: Sendable {
     /// - Returns: El registro `PublicationRecord` creado.
     @MainActor
     public func importPastedText(text: String, title: String) async throws -> PublicationRecord {
+        // Validar límite del plan gratuito
+        if let entitlementService {
+            let canImport = await entitlementService.canPerformAction(.importDocument)
+            if !canImport {
+                let limits = await entitlementService.getLimits()
+                throw ImportError.limitExceeded(String(localized: "Has alcanzado el límite de tu plan gratuito (\(limits.documentsLimit) documentos). Suscríbete a Premium para importar de forma ilimitada.", comment: "Limit exceeded error"))
+            }
+        }
+
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalTitle = trimmedTitle.isEmpty ? String(localized: "Texto pegado sin título") : trimmedTitle
 
