@@ -40,8 +40,13 @@ struct PDFReaderView: View {
     @State private var pendingCategory: HighlightCategory? = nil
     @State private var showPaywall = false
     @State private var showConsent = false
-    @State private var showAIResponse = false
     @State private var pendingAIAction: String? = nil
+    
+    // Respuesta inline (globo flotante)
+    @State private var showInlineBubble = false
+    @State private var inlineBubbleTitle = ""
+    @State private var inlineBubbleText = ""
+    @State private var isLoadingInline = false
 
     init(record: PublicationRecord, initialLocation: PDFLocation? = nil) {
         self.record = record
@@ -115,6 +120,12 @@ struct PDFReaderView: View {
                 selectionFloatingToolbar(theme: appTheme)
                     .transition(.opacity)
             }
+            
+            // Globo flotante de respuesta inline (Diccionario, Traducción, IA)
+            if showInlineBubble {
+                inlineResponseBubble(theme: appTheme)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .navigationBarHidden(true)
         .statusBarHidden(!showUI)
@@ -127,6 +138,11 @@ struct PDFReaderView: View {
         .onChange(of: currentLocation) { _, newValue in
             if let newValue {
                 saveReadingProgress(location: newValue)
+            }
+        }
+        .onDisappear {
+            Task {
+                await adapter.close()
             }
         }
     }
@@ -305,6 +321,7 @@ struct PDFReaderView: View {
             }
         }
         .ignoresSafeArea()
+        .toolbar(.hidden, for: .tabBar)
         // Hojas secundarias
         .sheet(isPresented: $showTOC) {
             tocSheet(theme: theme)
@@ -321,20 +338,8 @@ struct PDFReaderView: View {
         .sheet(isPresented: $showConsent) {
             AIConsentView { accepted in
                 if accepted, let pending = pendingAIAction {
-                    showAIResponse = true
+                    executeInlineAI(action: pending)
                 }
-            }
-        }
-        .sheet(isPresented: $showAIResponse) {
-            if let action = pendingAIAction {
-                AIResponseSheet(
-                    actionName: action,
-                    textToProcess: selectedText,
-                    targetLanguage: action == "translate" ? "en" : nil,
-                    onSaveAsNote: { responseText in
-                        createHighlight(category: .mainIdea, customNoteBody: responseText)
-                    }
-                )
             }
         }
     }
@@ -649,13 +654,14 @@ struct PDFReaderView: View {
         }
     }
 
+    /// Colores vibrantes y opacos para los botones circulares de la barra flotante.
     private func categoryColor(_ category: HighlightCategory) -> Color {
         switch category {
-        case .mainIdea: return .blue
-        case .question: return .purple
-        case .evidence: return .green
-        case .action: return .orange
-        case .quote: return .pink
+        case .mainIdea: return Color(red: 0.30, green: 0.55, blue: 0.80)   // Azul
+        case .question: return Color(red: 0.55, green: 0.38, blue: 0.75)   // Púrpura
+        case .evidence: return Color(red: 0.25, green: 0.65, blue: 0.45)   // Verde
+        case .action:   return Color(red: 0.85, green: 0.47, blue: 0.34)   // Coral
+        case .quote:    return Color(red: 0.80, green: 0.42, blue: 0.55)   // Rosa
         }
     }
     
@@ -670,10 +676,40 @@ struct PDFReaderView: View {
     }
 
     private func createHighlight(category: HighlightCategory, customNoteBody: String? = nil) {
-        guard let current = currentLocation else { return }
+        // Calcular ubicación: usar currentLocation si existe; de lo contrario, leerla del PDFView actual
+        let current: PDFLocation
+        if let loc = currentLocation {
+            current = loc
+        } else if let pdfView = pdfViewReference,
+                  let doc = pdfView.document,
+                  let page = pdfView.currentPage {
+            let idx = doc.index(for: page)
+            current = PDFLocation(pageIndex: idx, totalPages: doc.pageCount, pageLabel: page.label)
+            // Sincronizar el estado
+            self.currentLocation = current
+        } else {
+            return
+        }
         
         let colorToken = categoryColorToken(category)
-        let anchorData = (try? JSONEncoder().encode(current)) ?? Data()
+        
+        // Capturar las coordenadas geométricas de la selección actual
+        var boundsArray: [Double]? = nil
+        if let pdfView = pdfViewReference,
+           let selection = pdfView.currentSelection,
+           let page = selection.pages.first {
+            let bounds = selection.bounds(for: page)
+            boundsArray = [Double(bounds.origin.x), Double(bounds.origin.y), Double(bounds.size.width), Double(bounds.size.height)]
+        }
+        
+        let locWithBounds = PDFLocation(
+            pageIndex: current.pageIndex,
+            totalPages: current.totalPages,
+            pageLabel: current.pageLabel,
+            selectionBounds: boundsArray
+        )
+        
+        let anchorData = (try? JSONEncoder().encode(locWithBounds)) ?? Data()
         let anchorStr = String(data: anchorData, encoding: .utf8) ?? ""
         
         let highlight = Highlight(
@@ -748,98 +784,334 @@ struct PDFReaderView: View {
                     self.showConsent = true
                 }
             } else {
+                executeInlineAI(action: actionName)
+            }
+        }
+    }
+    
+    /// Ejecuta la acción de IA y muestra el resultado en el globo flotante inline.
+    private func executeInlineAI(action: String) {
+        let textToProcess = selectedText
+        
+        // Configurar título según la acción
+        let title: String
+        switch action {
+        case "define":     title = "📖 Definición"
+        case "translate":  title = "🌐 Traducción"
+        case "explain":    title = "💡 Explicación"
+        case "simplify":   title = "✏️ Simplificado"
+        case "summarize":  title = "📄 Resumen"
+        case "generateQuestions": title = "❓ Preguntas"
+        default:           title = "✨ IA"
+        }
+        
+        withAnimation(.spring(response: 0.3)) {
+            inlineBubbleTitle = title
+            inlineBubbleText = ""
+            isLoadingInline = true
+            showInlineBubble = true
+        }
+        
+        Task {
+            let token = dependencies.authService.sessionToken
+            do {
+                let result: String
+                switch action {
+                case "define":
+                    result = try await dependencies.aiService.explain(text: "Define la palabra: \(textToProcess)", sessionToken: token)
+                case "translate":
+                    result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: "en", sessionToken: token)
+                case "explain":
+                    result = try await dependencies.aiService.explain(text: textToProcess, sessionToken: token)
+                case "simplify":
+                    result = try await dependencies.aiService.simplify(text: textToProcess, sessionToken: token)
+                case "summarize":
+                    result = try await dependencies.aiService.summarize(text: textToProcess, sessionToken: token)
+                case "generateQuestions":
+                    result = try await dependencies.aiService.generateQuestions(text: textToProcess, sessionToken: token)
+                default:
+                    result = ""
+                }
+                
+                // Registrar consumo de IA
+                let usage = AIUsage(
+                    id: UUID(),
+                    userID: dependencies.authService.currentUser?.id,
+                    operation: action,
+                    creditCost: 1
+                )
+                try? await dependencies.aiUsageRepository.save(usage)
+                
                 await MainActor.run {
-                    self.pendingAIAction = actionName
-                    self.showAIResponse = true
+                    withAnimation(.spring(response: 0.3)) {
+                        self.inlineBubbleText = result
+                        self.isLoadingInline = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    withAnimation(.spring(response: 0.3)) {
+                        self.inlineBubbleText = "Error: \(error.localizedDescription)"
+                        self.isLoadingInline = false
+                    }
                 }
             }
         }
     }
 
     private func selectionFloatingToolbar(theme: AppTheme) -> some View {
-        VStack {
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        let circleSize: CGFloat = isPad ? 40 : 32
+        
+        return VStack {
             Spacer()
             
-            HStack(spacing: AppSpacing.md) {
-                // Los 5 colores de categorías de subrayado
-                ForEach(HighlightCategory.allCases, id: \.self) { category in
+            VStack(spacing: isPad ? AppSpacing.md : AppSpacing.sm) {
+                // Fila 1: Colores de subrayado
+                HStack(spacing: isPad ? AppSpacing.lg : AppSpacing.md) {
+                    ForEach(HighlightCategory.allCases, id: \.self) { category in
+                        Button {
+                            createHighlight(category: category)
+                        } label: {
+                            Circle()
+                                .fill(categoryColor(category))
+                                .frame(width: circleSize, height: circleSize)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white, lineWidth: 2)
+                                )
+                                .shadow(radius: 2)
+                        }
+                    }
+                    
+                    Divider()
+                        .frame(height: isPad ? 32 : 24)
+                    
+                    // Botón Nota
                     Button {
-                        createHighlight(category: category)
+                        noteBody = ""
+                        noteTags = ""
+                        pendingCategory = nil
+                        showNoteEditor = true
                     } label: {
-                        Circle()
-                            .fill(categoryColor(category))
-                            .frame(width: 32, height: 32)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.white, lineWidth: 2)
-                            )
-                            .shadow(radius: 2)
+                        Image(systemName: "note.text.badge.plus")
+                            .font(isPad ? .title3 : .body)
+                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                            .padding(AppSpacing.xs)
+                    }
+                    
+                    // Cerrar selección
+                    Button {
+                        pdfViewReference?.clearSelection()
+                        hasSelection = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(isPad ? .title3 : .body)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                            .padding(AppSpacing.xs)
                     }
                 }
                 
-                Divider()
-                    .frame(height: 24)
-                    .background(AppColor.border(for: theme))
-                
-                // Botón para Anotar (Nota vinculada)
-                Button {
-                    noteBody = ""
-                    noteTags = ""
-                    pendingCategory = nil
-                    showNoteEditor = true
-                } label: {
-                    Image(systemName: "note.text.badge.plus")
-                        .font(.body)
+                // Fila 2: Diccionario, Traducir, Acciones IA
+                HStack(spacing: isPad ? AppSpacing.xl : AppSpacing.lg) {
+                    // Diccionario del sistema
+                    Button {
+                        showDictionary(for: selectedText)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "character.book.closed")
+                                .font(isPad ? .body : .callout)
+                            Text("Diccionario")
+                                .font(isPad ? AppTypography.body : AppTypography.caption)
+                        }
                         .foregroundStyle(AppColor.textPrimary(for: theme))
-                        .padding(AppSpacing.xs)
-                }
-                
-                // Botón para quitar la selección / cerrar el menú
-                Button {
-                    pdfViewReference?.clearSelection()
-                    hasSelection = false
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.body)
-                        .foregroundStyle(AppColor.textSecondary(for: theme))
-                        .padding(AppSpacing.xs)
-                }
-                
-                Divider()
-                    .frame(height: 24)
-                    .background(AppColor.border(for: theme))
-                
-                // Menú de IA
-                Menu {
-                    Button(action: { triggerAIAction("explain") }) {
-                        Label("Explicar con IA", systemImage: "sparkles")
+                        .padding(.horizontal, isPad ? AppSpacing.md : AppSpacing.sm)
+                        .padding(.vertical, isPad ? AppSpacing.xs : AppSpacing.xxs)
+                        .background(AppColor.surfaceSecondary(for: theme))
+                        .clipShape(Capsule())
                     }
-                    Button(action: { triggerAIAction("simplify") }) {
-                        Label("Simplificar", systemImage: "text.alignleft")
+                    
+                    // Traducción directa con IA
+                    Button {
+                        triggerAIAction("translate")
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "translate")
+                                .font(isPad ? .body : .callout)
+                            Text("Traducir")
+                                .font(isPad ? AppTypography.body : AppTypography.caption)
+                        }
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .padding(.horizontal, isPad ? AppSpacing.md : AppSpacing.sm)
+                        .padding(.vertical, isPad ? AppSpacing.xs : AppSpacing.xxs)
+                        .background(AppColor.surfaceSecondary(for: theme))
+                        .clipShape(Capsule())
                     }
-                    Button(action: { triggerAIAction("translate") }) {
-                        Label("Traducir", systemImage: "translate")
+                    
+                    // Menú de IA
+                    Menu {
+                        Button(action: { triggerAIAction("explain") }) {
+                            Label("Explicar", systemImage: "lightbulb")
+                        }
+                        Button(action: { triggerAIAction("simplify") }) {
+                            Label("Simplificar", systemImage: "text.alignleft")
+                        }
+                        Button(action: { triggerAIAction("summarize") }) {
+                            Label("Resumir", systemImage: "doc.text")
+                        }
+                        Button(action: { triggerAIAction("generateQuestions") }) {
+                            Label("Crear preguntas", systemImage: "questionmark.circle")
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles")
+                                .font(isPad ? .body : .callout)
+                            Text("IA")
+                                .font(isPad ? AppTypography.bodyBold : AppTypography.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, isPad ? AppSpacing.md : AppSpacing.sm)
+                        .padding(.vertical, isPad ? AppSpacing.xs : AppSpacing.xxs)
+                        .background(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.55, green: 0.38, blue: 0.85),
+                                    Color(red: 0.85, green: 0.47, blue: 0.34)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .clipShape(Capsule())
                     }
-                    Button(action: { triggerAIAction("generateQuestions") }) {
-                        Label("Crear pregunta", systemImage: "questionmark.circle")
-                    }
-                } label: {
-                    Image(systemName: "sparkles")
-                        .font(.body)
-                        .foregroundStyle(AppColor.accent(for: theme))
-                        .padding(AppSpacing.xs)
                 }
             }
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.vertical, AppSpacing.sm)
+            .padding(.horizontal, isPad ? AppSpacing.xl : AppSpacing.lg)
+            .padding(.vertical, isPad ? AppSpacing.md : AppSpacing.sm)
             .background(AppColor.surface(for: theme))
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
             .shadow(color: AppShadow.medium(for: theme).color,
                     radius: AppShadow.medium(for: theme).radius,
                     x: AppShadow.medium(for: theme).x,
                     y: AppShadow.medium(for: theme).y)
-            .padding(.bottom, 90) // Encima de la barra inferior de progreso
+            .frame(maxWidth: isPad ? 650 : .infinity)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.bottom, 90)
         }
+    }
+
+    /// Globo flotante que muestra la respuesta de Diccionario, Traducción o IA inline.
+    private func inlineResponseBubble(theme: AppTheme) -> some View {
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        
+        return VStack {
+            Spacer()
+            
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                // Cabecera: título + botón cerrar + botón copiar
+                HStack {
+                    Text(inlineBubbleTitle)
+                        .font(isPad ? AppTypography.title : AppTypography.bodyBold)
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                    
+                    Spacer()
+                    
+                    if !isLoadingInline && !inlineBubbleText.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = inlineBubbleText
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(isPad ? .body : .caption)
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                        }
+                    }
+                    
+                    Button {
+                        withAnimation(.spring(response: 0.3)) {
+                            showInlineBubble = false
+                            inlineBubbleText = ""
+                            isLoadingInline = false
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(isPad ? .title3 : .body)
+                            .foregroundStyle(AppColor.textTertiary(for: theme))
+                    }
+                }
+                
+                // Texto de origen (grounding)
+                Text("\"\(selectedText.prefix(120))\"")
+                    .font(isPad ? AppTypography.body : AppTypography.caption)
+                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                    .lineLimit(2)
+                
+                Divider()
+                
+                // Contenido: loading o respuesta
+                if isLoadingInline {
+                    HStack(spacing: AppSpacing.sm) {
+                        ProgressView()
+                            .scaleEffect(isPad ? 1.0 : 0.8)
+                            .tint(AppColor.accent(for: theme))
+                        Text("Procesando…")
+                            .font(isPad ? AppTypography.body : AppTypography.caption)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, AppSpacing.sm)
+                } else {
+                    ScrollView {
+                        Text(inlineBubbleText)
+                            .font(isPad ? AppTypography.body : AppTypography.body)
+                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                            .lineSpacing(isPad ? 6 : 4)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: isPad ? 350 : 200)
+                    
+                    // Botón guardar como nota
+                    Button {
+                        createHighlight(category: .mainIdea, customNoteBody: inlineBubbleText)
+                        withAnimation(.spring(response: 0.3)) {
+                            showInlineBubble = false
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "note.text.badge.plus")
+                                .font(isPad ? .body : .caption)
+                            Text("Guardar como nota")
+                                .font(isPad ? AppTypography.bodyBold : AppTypography.caption.weight(.medium))
+                        }
+                        .foregroundStyle(AppColor.accent(for: theme))
+                        .padding(.horizontal, isPad ? AppSpacing.md : AppSpacing.sm)
+                        .padding(.vertical, isPad ? AppSpacing.xs : AppSpacing.xxs)
+                        .background(AppColor.accent(for: theme).opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                }
+            }
+            .padding(isPad ? AppSpacing.lg : AppSpacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: AppRadius.md)
+                    .fill(AppColor.surface(for: theme))
+                    .shadow(color: AppShadow.medium(for: theme).color,
+                            radius: AppShadow.medium(for: theme).radius + 2,
+                            x: AppShadow.medium(for: theme).x,
+                            y: AppShadow.medium(for: theme).y)
+            )
+            .frame(maxWidth: isPad ? 650 : .infinity)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.bottom, hasSelection ? (isPad ? 230 : 200) : 90)
+        }
+    }
+
+    /// Busca la definición de la palabra seleccionada usando IA e inline.
+    private func showDictionary(for term: String) {
+        let word = term.trimmingCharacters(in: .whitespacesAndNewlines)
+            .components(separatedBy: .whitespacesAndNewlines).first ?? term
+        guard !word.isEmpty else { return }
+        executeInlineAI(action: "define")
     }
 
     private func noteEditorSheet(theme: AppTheme) -> some View {
@@ -1014,8 +1286,11 @@ struct PDFReaderView: View {
     // MARK: - Helpers
 
     private var safeAreaTop: CGFloat {
-        let scenes = UIApplication.shared.connectedScenes
-        let windowScene = scenes.first as? UIWindowScene
-        return windowScene?.windows.first?.safeAreaInsets.top ?? 20
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.top ?? 24
+        return max(topInset, 24)
     }
 }

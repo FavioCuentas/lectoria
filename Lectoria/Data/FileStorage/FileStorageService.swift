@@ -32,7 +32,7 @@ public enum FileStorageError: LocalizedError, Sendable {
 // MARK: - FileStorageService
 
 /// Servicio encargado del guardado, hash y mantenimiento físico de los archivos de lectura.
-public final class FileStorageService: Sendable {
+public final class FileStorageService: @unchecked Sendable {
     private let fileManager: FileManager
 
     public init(fileManager: FileManager = .default) {
@@ -41,7 +41,9 @@ public final class FileStorageService: Sendable {
 
     /// Directorio base en `Application Support/Publications/`
     public var publicationsDirectory: URL {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("Publications", isDirectory: true)
+        }
         return appSupport.appendingPathComponent("Publications", isDirectory: true)
     }
 
@@ -144,7 +146,9 @@ public final class FileStorageService: Sendable {
 
     /// Verifica si hay suficiente espacio disponible en disco.
     private func hasAvailableDiskSpace(forSize requiredSize: Int64) -> Bool {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return false
+        }
         do {
             let values = try appSupport.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             if let availableSpace = values.volumeAvailableCapacityForImportantUsage {

@@ -9,14 +9,16 @@ struct KeychainHelper: Sendable {
     
     /// Guarda datos asociados a una clave. Si la clave ya existe, sobrescribe los datos.
     static func save(key: String, data: Data) {
-        let query = [
+        let deleteQuery = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecValueData as String: data
+            kSecAttrAccount as String: key
         ] as [String: Any]
         
-        SecItemDelete(query as CFDictionary)
+        SecItemDelete(deleteQuery as CFDictionary)
+        
+        var query = deleteQuery
+        query[kSecValueData as String] = data
         SecItemAdd(query as CFDictionary, nil)
     }
     

@@ -23,7 +23,7 @@ public enum CoverGeneratorError: LocalizedError, Sendable {
 // MARK: - CoverGenerator
 
 /// Generador encargado de crear portadas físicas (miniatuas de imagen) para los documentos importados.
-public final class CoverGenerator: Sendable {
+public final class CoverGenerator: @unchecked Sendable {
     private let fileManager: FileManager
 
     public init(fileManager: FileManager = .default) {
@@ -32,7 +32,9 @@ public final class CoverGenerator: Sendable {
 
     /// Directorio base en `Application Support/Covers/`
     public var coversDirectory: URL {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("Covers", isDirectory: true)
+        }
         return appSupport.appendingPathComponent("Covers", isDirectory: true)
     }
 
@@ -113,6 +115,7 @@ public final class CoverGenerator: Sendable {
     }
 
     /// Dibuja dinámicamente una portada minimalista tipo e-reader para libros electrónicos y texto plano.
+    @MainActor
     private func generateTextBasedCover(title: String, author: String?, to destinationURL: URL) throws {
         let size = CGSize(width: 240, height: 320)
         let renderer = UIGraphicsImageRenderer(size: size)

@@ -3,6 +3,7 @@ import Foundation
 // MARK: - NoteRepository
 
 /// Contrato para el acceso y gestión de notas de estudio.
+@MainActor
 public protocol NoteRepository: Sendable {
     /// Obtiene todas las notas asociadas a un documento.
     func fetch(forPublication publicationID: UUID) async throws -> [Note]

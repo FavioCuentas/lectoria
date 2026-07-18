@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - RootView
 
@@ -10,6 +11,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppRouter.self) private var router
+    @Environment(AppDependencies.self) private var dependencies
 
     var body: some View {
         @Bindable var router = router
@@ -42,6 +44,40 @@ struct RootView: View {
         }
         .tint(AppColor.accent(for: theme))
         .preferredColorScheme(theme.colorScheme)
+        .fileImporter(
+            isPresented: $router.isShowingImport,
+            allowedContentTypes: [
+                .pdf,
+                UTType(filenameExtension: "epub") ?? .data,
+                .plainText,
+                UTType(filenameExtension: "md") ?? .plainText
+            ],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    importFile(at: url)
+                }
+            case .failure(let error):
+                print("Error al seleccionar archivo: \(error.localizedDescription)")
+            }
+        }
+        .sheet(isPresented: $router.isShowingNewText) {
+            NewTextView()
+        }
+    }
+
+    private func importFile(at url: URL) {
+        Task {
+            do {
+                let record = try await dependencies.importService.importPublication(from: url)
+                // Redirigir al lector correspondiente
+                router.selectedPublication = record
+            } catch {
+                print("Error al importar publicación: \(error.localizedDescription)")
+            }
+        }
     }
 }
 

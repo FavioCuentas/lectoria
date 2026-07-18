@@ -1,7 +1,7 @@
 import Foundation
-import ReadiumShared
-import ReadiumStreamer
-import ReadiumNavigator
+@preconcurrency import ReadiumShared
+@preconcurrency import ReadiumStreamer
+@preconcurrency import ReadiumNavigator
 
 // MARK: - EPUBReaderAdapter
 
@@ -25,7 +25,13 @@ final class EPUBReaderAdapter: PublicationEngine {
     /// Abre una publicación EPUB de forma asíncrona.
     func open(publication record: PublicationRecord) async throws {
         // Resolver ruta física del documento en el contenedor privado
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw NSError(
+                domain: "EPUBReaderAdapter",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo resolver el directorio Application Support."]
+            )
+        }
         let fileURL = appSupport.appendingPathComponent("Publications/\(record.localFileName)")
         
         guard FileManager.default.fileExists(atPath: fileURL.path) else {

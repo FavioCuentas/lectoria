@@ -3,6 +3,7 @@ import Foundation
 // MARK: - BookmarkRepository
 
 /// Contrato para el acceso y gestión de marcadores en base de datos.
+@MainActor
 public protocol BookmarkRepository: Sendable {
     /// Obtiene todos los marcadores asociados a un documento.
     func fetch(forPublication publicationID: UUID) async throws -> [Bookmark]

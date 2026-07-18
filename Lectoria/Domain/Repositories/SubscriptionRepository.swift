@@ -3,6 +3,7 @@ import Foundation
 // MARK: - SubscriptionRepository
 
 /// Contrato para el control del estado y validez de las suscripciones.
+@MainActor
 public protocol SubscriptionRepository: Sendable {
     /// Obtiene todos los entitlements de suscripción locales.
     func fetchAllEntitlements() async throws -> [SubscriptionEntitlement]

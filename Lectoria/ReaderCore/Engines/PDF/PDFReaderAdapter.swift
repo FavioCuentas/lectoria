@@ -16,7 +16,13 @@ final class PDFReaderAdapter: PublicationEngine {
     /// Abre una publicación PDF.
     func open(publication record: PublicationRecord) async throws {
         // Resolver ruta física del documento en el contenedor privado
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw NSError(
+                domain: "PDFReaderAdapter",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo resolver el directorio Application Support."]
+            )
+        }
         let fileURL = appSupport.appendingPathComponent("Publications/\(record.localFileName)")
         
         guard FileManager.default.fileExists(atPath: fileURL.path) else {

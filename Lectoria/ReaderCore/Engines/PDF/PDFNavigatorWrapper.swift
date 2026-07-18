@@ -124,41 +124,59 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
             guard let data = highlight.anchor.data(using: .utf8),
                   let location = try? JSONDecoder().decode(PDFLocation.self, from: data) else { continue }
             
-            let selections = document.findString(highlight.selectedText, withOptions: [])
-            for selection in selections {
-                guard let firstPage = selection.pages.first else { continue }
-                let pageIndex = document.index(for: firstPage)
-                
-                if pageIndex == location.pageIndex {
-                    let bounds = selection.bounds(for: firstPage)
-                    let annotation = PDFAnnotation(
-                        bounds: bounds,
-                        forType: .highlight,
-                        withProperties: nil
-                    )
-                    annotation.userName = "Lectoria"
-                    annotation.color = highlightColor(for: highlight.colorToken)
+            guard let page = document.page(at: location.pageIndex) else { continue }
+            
+            if let boundsArray = location.selectionBounds, boundsArray.count == 4 {
+                let bounds = CGRect(x: boundsArray[0], y: boundsArray[1], width: boundsArray[2], height: boundsArray[3])
+                let annotation = PDFAnnotation(
+                    bounds: bounds,
+                    forType: .highlight,
+                    withProperties: nil
+                )
+                annotation.userName = "Lectoria"
+                annotation.color = highlightColor(for: highlight.colorToken)
+                page.addAnnotation(annotation)
+            } else {
+                // Fallback para destacados legacy
+                let selections = document.findString(highlight.selectedText, withOptions: [])
+                for selection in selections {
+                    guard let firstPage = selection.pages.first else { continue }
+                    let pageIndex = document.index(for: firstPage)
                     
-                    firstPage.addAnnotation(annotation)
+                    if pageIndex == location.pageIndex {
+                        let bounds = selection.bounds(for: firstPage)
+                        let annotation = PDFAnnotation(
+                            bounds: bounds,
+                            forType: .highlight,
+                            withProperties: nil
+                        )
+                        annotation.userName = "Lectoria"
+                        annotation.color = highlightColor(for: highlight.colorToken)
+                        firstPage.addAnnotation(annotation)
+                    }
                 }
             }
         }
+        
+        // Force refresh and redraw the PDFView layout immediately
+        uiView.layoutDocumentView()
+        uiView.setNeedsDisplay()
     }
     
     private func highlightColor(for token: String) -> UIColor {
         switch token.lowercased() {
         case "idea principal", "blue", "mainidea":
-            return UIColor.systemBlue.withAlphaComponent(0.3)
+            return UIColor(red: 0.30, green: 0.55, blue: 0.80, alpha: 0.35)
         case "duda", "purple", "question":
-            return UIColor.systemPurple.withAlphaComponent(0.3)
+            return UIColor(red: 0.55, green: 0.38, blue: 0.75, alpha: 0.35)
         case "evidencia", "green", "evidence":
-            return UIColor.systemGreen.withAlphaComponent(0.3)
+            return UIColor(red: 0.25, green: 0.65, blue: 0.45, alpha: 0.35)
         case "acción", "accion", "orange", "coral", "action":
-            return UIColor.systemOrange.withAlphaComponent(0.3)
+            return UIColor(red: 0.85, green: 0.47, blue: 0.34, alpha: 0.35)
         case "cita", "pink", "quote":
-            return UIColor.systemPink.withAlphaComponent(0.3)
+            return UIColor(red: 0.80, green: 0.42, blue: 0.55, alpha: 0.35)
         default:
-            return UIColor.systemYellow.withAlphaComponent(0.3)
+            return UIColor(red: 0.95, green: 0.80, blue: 0.30, alpha: 0.35)
         }
     }
     

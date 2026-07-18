@@ -3,6 +3,7 @@ import Foundation
 // MARK: - HighlightRepository
 
 /// Contrato para el acceso y gestión de subrayados.
+@MainActor
 public protocol HighlightRepository: Sendable {
     /// Obtiene todos los subrayados asociados a un documento.
     func fetch(forPublication publicationID: UUID) async throws -> [Highlight]

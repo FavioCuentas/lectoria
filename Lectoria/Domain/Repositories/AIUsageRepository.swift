@@ -3,6 +3,7 @@ import Foundation
 // MARK: - AIUsageRepository
 
 /// Contrato para llevar el control local de cuotas consumidas de IA.
+@MainActor
 public protocol AIUsageRepository: Sendable {
     /// Obtiene todos los registros de consumo de IA locales.
     func fetchAll() async throws -> [AIUsage]

@@ -65,6 +65,7 @@ struct TOCItem: Identifiable, Sendable {
 /// - `EPUBReaderAdapter` (Readium, Fase 3)
 /// - `PDFReaderAdapter` (PDFKit, Fase 4)
 /// - `TextReaderAdapter` (nativo, Fase 5)
+@MainActor
 protocol PublicationEngine<Location>: Sendable {
     /// Tipo que representa una posición dentro de la publicación.
     associatedtype Location: Codable & Sendable
@@ -117,6 +118,7 @@ struct AnnotationAnchor: Codable, Sendable {
 ///
 /// Cada motor de lectura debe implementar este protocolo para
 /// vincular anotaciones a posiciones estables en el documento.
+@MainActor
 protocol AnnotationAnchoring: Sendable {
     /// Crea un ancla a partir de una selección del usuario.
     func createAnchor(from selection: ReaderSelection) async throws -> AnnotationAnchor

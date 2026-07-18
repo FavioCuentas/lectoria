@@ -53,7 +53,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
                     }
                 }
             }
-        } catch {}
+        } catch {
+            print("[StoreKitSubscriptionService] Error al verificar active entitlements: \(error.localizedDescription)")
+        }
     }
     
     /// Escucha transacciones del App Store en tiempo de ejecución (ej. renovaciones, compras externas)
@@ -64,7 +66,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
                     let transaction = try checkVerified(result)
                     await updateSubscriptionStatus()
                     await transaction.finish()
-                } catch {}
+                } catch {
+                    print("[StoreKitSubscriptionService] Error al observar transacciones: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -135,7 +139,9 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
                         activeEnt = entitlement
                     }
                 }
-            } catch {}
+            } catch {
+                print("[StoreKitSubscriptionService] Error al procesar entitlement de transaccion: \(error.localizedDescription)")
+            }
         }
         
         let hasActive = foundActive

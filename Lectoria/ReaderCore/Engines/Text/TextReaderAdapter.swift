@@ -20,7 +20,13 @@ final class TextReaderAdapter: PublicationEngine {
         self.record = record
         
         // Resolver ruta física del documento en el contenedor privado
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            throw NSError(
+                domain: "TextReaderAdapter",
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "No se pudo resolver el directorio Application Support."]
+            )
+        }
         let fileURL = appSupport.appendingPathComponent("Publications/\(record.localFileName)")
         
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
@@ -81,7 +87,10 @@ final class TextReaderAdapter: PublicationEngine {
                     let locationData = (try? JSONEncoder().encode(loc)) ?? Data()
                     
                     results.append(SearchResult(
+                        id: UUID(),
                         text: text,
+                        contextBefore: "",
+                        contextAfter: "",
                         chapterTitle: "Párrafo \(block.index + 1)",
                         locationData: locationData
                     ))
@@ -108,9 +117,11 @@ final class TextReaderAdapter: PublicationEngine {
                     let locationData = (try? JSONEncoder().encode(loc)) ?? Data()
                     
                     items.append(TOCItem(
+                        id: UUID(),
                         title: text,
                         level: max(0, level - 1),
-                        locationData: locationData
+                        locationData: locationData,
+                        children: []
                     ))
                 }
             }
@@ -119,9 +130,8 @@ final class TextReaderAdapter: PublicationEngine {
     }
     
     // MARK: - Parser Helper
-    
     /// Parsea el texto y genera una colección estructurada de bloques.
-    private static func parseText(_ text: String, isMarkdown: Bool) -> [TextBlock] {
+    private nonisolated static func parseText(_ text: String, isMarkdown: Bool) -> [TextBlock] {
         guard isMarkdown else {
             // Texto plano: simplemente dividir por párrafos
             let paragraphs = text.components(separatedBy: "\n")
@@ -133,7 +143,7 @@ final class TextReaderAdapter: PublicationEngine {
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty {
                     if !currentParagraph.isEmpty {
-                        blocks.append(TextBlock(index: index, type: .paragraph(text: currentParagraph), rawText: currentParagraph))
+                        blocks.append(TextBlock(id: UUID(), index: index, type: .paragraph(text: currentParagraph), rawText: currentParagraph))
                         currentParagraph = ""
                         index += 1
                     }
@@ -146,7 +156,7 @@ final class TextReaderAdapter: PublicationEngine {
                 }
             }
             if !currentParagraph.isEmpty {
-                blocks.append(TextBlock(index: index, type: .paragraph(text: currentParagraph), rawText: currentParagraph))
+                blocks.append(TextBlock(id: UUID(), index: index, type: .paragraph(text: currentParagraph), rawText: currentParagraph))
             }
             return blocks
         }
@@ -181,7 +191,7 @@ final class TextReaderAdapter: PublicationEngine {
                 type = .codeBlock(code: blockText, language: codeBlockLanguage)
             }
             
-            blocks.append(TextBlock(index: index, type: type, rawText: blockText))
+            blocks.append(TextBlock(id: UUID(), index: index, type: type, rawText: blockText))
             index += 1
             currentLines.removeAll()
             currentBlockType = .paragraph
@@ -218,7 +228,7 @@ final class TextReaderAdapter: PublicationEngine {
                 if remaining.hasPrefix(" ") && headingWeight <= 6 {
                     flush()
                     let headingText = remaining.dropFirst().trimmingCharacters(in: .whitespacesAndNewlines)
-                    blocks.append(TextBlock(index: index, type: .heading(text: headingText, level: headingWeight), rawText: line))
+                    blocks.append(TextBlock(id: UUID(), index: index, type: .heading(text: headingText, level: headingWeight), rawText: line))
                     index += 1
                     continue
                 }
@@ -239,7 +249,7 @@ final class TextReaderAdapter: PublicationEngine {
             if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") {
                 flush()
                 let itemText = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
-                blocks.append(TextBlock(index: index, type: .listItem(text: itemText), rawText: line))
+                blocks.append(TextBlock(id: UUID(), index: index, type: .listItem(text: itemText), rawText: line))
                 index += 1
                 continue
             }

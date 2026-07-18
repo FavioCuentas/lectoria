@@ -135,6 +135,11 @@ struct TextReaderView: View {
                 saveReadingProgress(location: newValue)
             }
         }
+        .onDisappear {
+            Task {
+                await adapter.close()
+            }
+        }
     }
 
     // MARK: - Loading & Error States
@@ -296,6 +301,7 @@ struct TextReaderView: View {
             }
         }
         .ignoresSafeArea()
+        .toolbar(.hidden, for: .tabBar)
         // Hojas secundarias
         .sheet(isPresented: $showTOC) {
             tocSheet(theme: theme)
@@ -840,17 +846,18 @@ struct TextReaderView: View {
 
     private func categoryColorName(_ name: String?) -> Color {
         guard let name = name?.lowercased() else { return .clear }
+        let theme = themeManager.currentTheme
         switch name {
         case "idea principal", "blue", "mainidea":
-            return .blue.opacity(0.2)
+            return AppColor.highlightMainIdea(for: theme)
         case "duda", "purple", "question":
-            return .purple.opacity(0.2)
+            return AppColor.highlightQuestion(for: theme)
         case "evidencia", "green", "evidence":
-            return .green.opacity(0.2)
+            return AppColor.highlightEvidence(for: theme)
         case "acción", "accion", "orange", "coral", "action":
-            return .orange.opacity(0.2)
+            return AppColor.highlightAction(for: theme)
         case "cita", "pink", "quote":
-            return .pink.opacity(0.2)
+            return AppColor.highlightQuote(for: theme)
         default:
             return .clear
         }
@@ -1155,8 +1162,11 @@ struct TextReaderView: View {
     }
 
     private var safeAreaTop: CGFloat {
-        let scenes = UIApplication.shared.connectedScenes
-        let windowScene = scenes.first as? UIWindowScene
-        return windowScene?.windows.first?.safeAreaInsets.top ?? 20
+        let topInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.top ?? 24
+        return max(topInset, 24)
     }
 }
