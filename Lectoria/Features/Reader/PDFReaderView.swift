@@ -630,6 +630,11 @@ struct PDFReaderView: View {
             // 2. Abrir el PDF con el adaptador
             try await adapter.open(publication: record)
             
+            // Registrar fecha de apertura
+            var updatedRecord = record
+            updatedRecord.lastOpenedAt = Date()
+            try? await dependencies.publicationRepository.save(updatedRecord)
+            
             // 3. Extraer el outline (TOC)
             self.tocItems = (try? await adapter.tableOfContents()) ?? []
             

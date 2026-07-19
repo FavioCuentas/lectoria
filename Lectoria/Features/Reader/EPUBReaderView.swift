@@ -432,6 +432,11 @@ struct EPUBReaderView: View {
             // 2. Abrir la publicación con el adaptador de Readium
             try await adapter.open(publication: record)
             
+            // Registrar fecha de apertura
+            var updatedRecord = record
+            updatedRecord.lastOpenedAt = Date()
+            try? await dependencies.publicationRepository.save(updatedRecord)
+            
             // 3. Extraer la Tabla de Contenidos
             self.tocItems = (try? await adapter.tableOfContents()) ?? []
             

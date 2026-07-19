@@ -802,6 +802,11 @@ struct TextReaderView: View {
 
             // 2. Abrir la publicación con el adaptador
             try await adapter.open(publication: record)
+            
+            // Registrar fecha de apertura
+            var updatedRecord = record
+            updatedRecord.lastOpenedAt = Date()
+            try? await dependencies.publicationRepository.save(updatedRecord)
 
             // 3. Obtener el índice (TOC)
             self.tocItems = (try? await adapter.tableOfContents()) ?? []
