@@ -177,7 +177,7 @@ struct LibraryView: View {
     }
 
     private var filteredModels: [PublicationModel] {
-        publicationModels.filter { model in
+        let filtered = publicationModels.filter { model in
             let record = model.toDomain()
             
             // Filtro de búsqueda por texto
@@ -209,6 +209,14 @@ struct LibraryView: View {
             case .favorites:
                 return record.isFavorite
             }
+        }
+        
+        // Pinned first, then sorted by createdAt descending
+        return filtered.sorted { a, b in
+            if a.isPinned != b.isPinned {
+                return a.isPinned && !b.isPinned
+            }
+            return a.createdAt > b.createdAt
         }
     }
 }

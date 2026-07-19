@@ -140,20 +140,38 @@ struct RootView: View {
                             .padding(.horizontal)
                     }
                 } else if let error = importError {
+                    let isDuplicate = error.localizedCaseInsensitiveContains("ya existe") || error.localizedCaseInsensitiveContains("duplicado")
+                    
                     VStack(spacing: AppSpacing.md) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 50))
-                            .foregroundStyle(.red)
-                        
-                        Text("Error al importar")
-                            .font(AppTypography.bodyBold)
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
-                        
-                        Text(error)
-                            .font(AppTypography.caption)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                        if isDuplicate {
+                            Image(systemName: "info.circle.fill")
+                                .font(.system(size: 50))
+                                .foregroundStyle(AppColor.accent(for: theme))
+                            
+                            Text("Ya está en tu biblioteca")
+                                .font(AppTypography.bodyBold)
+                                .foregroundStyle(AppColor.textPrimary(for: theme))
+                            
+                            Text(error)
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        } else {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 50))
+                                .foregroundStyle(.orange)
+                            
+                            Text("No se pudo cargar")
+                                .font(AppTypography.bodyBold)
+                                .foregroundStyle(AppColor.textPrimary(for: theme))
+                            
+                            Text(error)
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
                         
                         Button {
                             withAnimation(.spring(response: 0.3)) {
@@ -162,10 +180,10 @@ struct RootView: View {
                         } label: {
                             Text("Cerrar")
                                 .font(AppTypography.callout.bold())
-                                .foregroundStyle(AppColor.textPrimary(for: theme))
+                                .foregroundStyle(isDuplicate ? .white : AppColor.textPrimary(for: theme))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, AppSpacing.md)
-                                .background(AppColor.surfaceSecondary(for: theme))
+                                .background(isDuplicate ? AppColor.accent(for: theme) : AppColor.surfaceSecondary(for: theme))
                                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
                         }
                         .padding(.top, AppSpacing.sm)

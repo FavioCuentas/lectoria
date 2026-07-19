@@ -43,6 +43,7 @@ public struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
     public var lastOpenedAt: Date?
     public var finishedAt: Date?
     public var isFavorite: Bool
+    public var isPinned: Bool
     public var isArchived: Bool
     public var isCloudBackedUp: Bool
     public var indexingStatus: IndexingStatus
@@ -68,6 +69,7 @@ public struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
         lastOpenedAt: Date? = nil,
         finishedAt: Date? = nil,
         isFavorite: Bool = false,
+        isPinned: Bool = false,
         isArchived: Bool = false,
         isCloudBackedUp: Bool = false,
         indexingStatus: IndexingStatus = .pending,
@@ -90,6 +92,7 @@ public struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
         self.lastOpenedAt = lastOpenedAt
         self.finishedAt = finishedAt
         self.isFavorite = isFavorite
+        self.isPinned = isPinned
         self.isArchived = isArchived
         self.isCloudBackedUp = isCloudBackedUp
         self.indexingStatus = indexingStatus
@@ -140,6 +143,7 @@ public struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
             lastOpenedAt: nil,
             finishedAt: nil,
             isFavorite: false,
+            isPinned: false,
             isArchived: false,
             isCloudBackedUp: false,
             indexingStatus: .pending,

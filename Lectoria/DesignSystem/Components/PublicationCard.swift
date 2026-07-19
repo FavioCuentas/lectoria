@@ -11,9 +11,11 @@ struct PublicationCard: View {
     let publication: PublicationRecord
     let style: Style
     let progress: Double
+    let onUpdate: (() -> Void)?
     let action: () -> Void
 
     @Environment(ThemeManager.self) private var themeManager
+    @Environment(AppDependencies.self) private var dependencies
 
     enum Style {
         case grid
@@ -24,18 +26,68 @@ struct PublicationCard: View {
         publication: PublicationRecord,
         style: Style = .grid,
         progress: Double = 0,
+        onUpdate: (() -> Void)? = nil,
         action: @escaping () -> Void
     ) {
         self.publication = publication
         self.style = style
         self.progress = progress
+        self.onUpdate = onUpdate
         self.action = action
     }
 
     var body: some View {
-        switch style {
-        case .grid: gridCard
-        case .list: listCard
+        let theme = themeManager.currentTheme
+        Group {
+            switch style {
+            case .grid: gridCard
+            case .list: listCard
+            }
+        }
+        .contextMenu {
+            // Fijar / Desfijar
+            Button {
+                var updated = publication
+                updated.isPinned.toggle()
+                Task {
+                    try? await dependencies.publicationRepository.save(updated)
+                    await MainActor.run {
+                        onUpdate?()
+                    }
+                }
+            } label: {
+                Label(publication.isPinned ? "Desfijar" : "Fijar al inicio",
+                      systemImage: publication.isPinned ? "pin.slash" : "pin")
+            }
+
+            // Favorito / Quitar favorito
+            Button {
+                var updated = publication
+                updated.isFavorite.toggle()
+                Task {
+                    try? await dependencies.publicationRepository.save(updated)
+                    await MainActor.run {
+                        onUpdate?()
+                    }
+                }
+            } label: {
+                Label(publication.isFavorite ? "Quitar de favoritos" : "Hacer favorito",
+                      systemImage: publication.isFavorite ? "heart.slash" : "heart")
+            }
+
+            Divider()
+
+            // Borrar
+            Button(role: .destructive) {
+                Task {
+                    try? await dependencies.publicationRepository.delete(id: publication.id)
+                    await MainActor.run {
+                        onUpdate?()
+                    }
+                }
+            } label: {
+                Label("Borrar libro", systemImage: "trash")
+            }
         }
     }
 
@@ -129,34 +181,47 @@ struct PublicationCard: View {
 
     private var coverView: some View {
         let theme = themeManager.currentTheme
-        return ZStack {
-            RoundedRectangle(cornerRadius: AppRadius.xs)
-                .fill(AppColor.surface(for: theme))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppRadius.xs)
-                        .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
-                )
+        return ZStack(alignment: .topTrailing) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppRadius.xs)
+                    .fill(AppColor.surface(for: theme))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppRadius.xs)
+                            .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
+                    )
 
-            VStack(spacing: AppSpacing.sm) {
-                Spacer()
-                
-                Image(systemName: publication.publicationType.systemImage)
-                    .font(.body)
-                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                VStack(spacing: AppSpacing.sm) {
+                    Spacer()
+                    
+                    Image(systemName: publication.publicationType.systemImage)
+                        .font(.body)
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
 
-                Text(publication.title)
-                    .font(.system(size: 11, weight: .bold, design: .serif))
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .padding(.horizontal, AppSpacing.xs)
+                    Text(publication.title)
+                        .font(.system(size: 11, weight: .bold, design: .serif))
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                        .padding(.horizontal, AppSpacing.xs)
 
-                Spacer()
-                
-                Text(publication.publicationType.displayName.uppercased())
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(AppColor.textTertiary(for: theme))
-                    .padding(.bottom, AppSpacing.sm)
+                    Spacer()
+                    
+                    Text(publication.publicationType.displayName.uppercased())
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                        .padding(.bottom, AppSpacing.sm)
+                }
+            }
+            
+            if publication.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(AppSpacing.xxs)
+                    .background(AppColor.accent(for: theme))
+                    .clipShape(Circle())
+                    .padding(AppSpacing.xs)
+                    .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
             }
         }
     }

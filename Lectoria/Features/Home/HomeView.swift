@@ -136,17 +136,29 @@ struct HomeView: View {
                 } label: {
                     HStack(spacing: AppSpacing.md) {
                         // Portada minimalista
-                        ZStack {
-                            RoundedRectangle(cornerRadius: AppRadius.xs)
-                                .fill(AppColor.surfaceSecondary(for: theme))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: AppRadius.xs)
-                                        .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
-                                )
+                        ZStack(alignment: .topTrailing) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: AppRadius.xs)
+                                    .fill(AppColor.surfaceSecondary(for: theme))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: AppRadius.xs)
+                                            .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
+                                    )
+                                
+                                Image(systemName: publication.publicationType.systemImage)
+                                    .font(.title3)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                            }
                             
-                            Image(systemName: publication.publicationType.systemImage)
-                                .font(.title3)
-                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                            if publication.isPinned {
+                                Image(systemName: "pin.fill")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(3)
+                                    .background(AppColor.accent(for: theme))
+                                    .clipShape(Circle())
+                                    .offset(x: 4, y: -4)
+                            }
                         }
                         .frame(width: 50, height: 70)
                         
@@ -190,6 +202,45 @@ struct HomeView: View {
                             y: AppShadow.subtle(for: theme).y)
                 }
                 .buttonStyle(.plain)
+                .contextMenu {
+                    // Fijar / Desfijar
+                    Button {
+                        var updated = publication
+                        updated.isPinned.toggle()
+                        Task {
+                            try? await dependencies.publicationRepository.save(updated)
+                            await loadData()
+                        }
+                    } label: {
+                        Label(publication.isPinned ? "Desfijar" : "Fijar al inicio",
+                              systemImage: publication.isPinned ? "pin.slash" : "pin")
+                    }
+
+                    // Favorito / Quitar favorito
+                    Button {
+                        var updated = publication
+                        updated.isFavorite.toggle()
+                        Task {
+                            try? await dependencies.publicationRepository.save(updated)
+                            await loadData()
+                        }
+                    } label: {
+                        Label(publication.isFavorite ? "Quitar de favoritos" : "Hacer favorito",
+                              systemImage: publication.isFavorite ? "heart.slash" : "heart")
+                    }
+
+                    Divider()
+
+                    // Borrar
+                    Button(role: .destructive) {
+                        Task {
+                            try? await dependencies.publicationRepository.delete(id: publication.id)
+                            await loadData()
+                        }
+                    } label: {
+                        Label("Borrar libro", systemImage: "trash")
+                    }
+                }
             } else {
                 // Empty state — minimal
                 HStack(spacing: AppSpacing.md) {
@@ -294,7 +345,11 @@ struct HomeView: View {
                     ForEach(recentPublications, id: \.0.id) { pair in
                         let pub = pair.0
                         let prog = pair.1
-                        PublicationCard(publication: pub, style: .grid, progress: prog) {
+                        PublicationCard(publication: pub, style: .grid, progress: prog, onUpdate: {
+                            Task {
+                                await loadData()
+                            }
+                        }) {
                             selectedPublication = pub
                         }
                     }

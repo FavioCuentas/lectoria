@@ -52,6 +52,7 @@ public final class SwiftDataPublicationRepository: PublicationRepository {
             existing.lastOpenedAt = publication.lastOpenedAt
             existing.finishedAt = publication.finishedAt
             existing.isFavorite = publication.isFavorite
+            existing.isPinned = publication.isPinned
             existing.isArchived = publication.isArchived
             existing.isCloudBackedUp = publication.isCloudBackedUp
             existing.indexingStatusRaw = publication.indexingStatus.rawValue

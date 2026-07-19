@@ -22,6 +22,7 @@ public final class PublicationModel {
     public var lastOpenedAt: Date?
     public var finishedAt: Date?
     public var isFavorite: Bool
+    public var isPinned: Bool = false
     public var isArchived: Bool
     public var isCloudBackedUp: Bool
     public var indexingStatusRaw: String
@@ -61,6 +62,7 @@ public final class PublicationModel {
         lastOpenedAt: Date? = nil,
         finishedAt: Date? = nil,
         isFavorite: Bool = false,
+        isPinned: Bool = false,
         isArchived: Bool = false,
         isCloudBackedUp: Bool = false,
         indexingStatusRaw: String = "pending",
@@ -83,6 +85,7 @@ public final class PublicationModel {
         self.lastOpenedAt = lastOpenedAt
         self.finishedAt = finishedAt
         self.isFavorite = isFavorite
+        self.isPinned = isPinned
         self.isArchived = isArchived
         self.isCloudBackedUp = isCloudBackedUp
         self.indexingStatusRaw = indexingStatusRaw
@@ -386,6 +389,7 @@ extension PublicationModel {
             lastOpenedAt: lastOpenedAt,
             finishedAt: finishedAt,
             isFavorite: isFavorite,
+            isPinned: isPinned,
             isArchived: isArchived,
             isCloudBackedUp: isCloudBackedUp,
             indexingStatus: IndexingStatus(rawValue: indexingStatusRaw) ?? .pending,
@@ -412,6 +416,7 @@ extension PublicationModel {
             lastOpenedAt: domain.lastOpenedAt,
             finishedAt: domain.finishedAt,
             isFavorite: domain.isFavorite,
+            isPinned: domain.isPinned,
             isArchived: domain.isArchived,
             isCloudBackedUp: domain.isCloudBackedUp,
             indexingStatusRaw: domain.indexingStatus.rawValue,
