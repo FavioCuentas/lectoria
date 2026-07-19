@@ -90,6 +90,19 @@ struct NewTextView: View {
             }
         }
         .preferredColorScheme(theme.colorScheme)
+        .onAppear {
+            if let clipboardString = UIPasteboard.general.string,
+               !clipboardString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.content = clipboardString
+                
+                if self.title.isEmpty {
+                    let formatter = DateFormatter()
+                    formatter.dateStyle = .short
+                    formatter.timeStyle = .short
+                    self.title = "Texto pegado (\(formatter.string(from: Date())))"
+                }
+            }
+        }
     }
 
     private func saveText() {
