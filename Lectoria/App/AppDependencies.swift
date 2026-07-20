@@ -80,7 +80,13 @@ public final class AppDependencies {
             entitlementService: entitlement
         )
         
-        self.aiService = aiService ?? SupabaseAIService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+        let isFakeConfig = env.supabaseURL.contains("fake") || env.supabaseURL.contains("lectoria.app") || env.supabaseAnonKey.contains("fake")
+        
+        if isFakeConfig {
+            self.aiService = aiService ?? MockAIService(hasConsentedToAI: true)
+        } else {
+            self.aiService = aiService ?? SupabaseAIService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+        }
         
         self.syncService = syncService ?? SupabaseSyncService(container: modelContainer, authService: self.authService, supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
     }
