@@ -28,17 +28,26 @@ struct LectoriaApp: App {
         self._dependencies = State(initialValue: AppDependencies(modelContainer: container))
     }
 
+    @State private var showSplash = true
+
     var body: some Scene {
         WindowGroup {
-            Group {
-                if hasCompletedOnboarding {
-                    RootView()
-                } else {
-                    OnboardingView {
-                        withAnimation(.easeInOut(duration: 0.5)) {
-                            hasCompletedOnboarding = true
+            ZStack {
+                Group {
+                    if hasCompletedOnboarding {
+                        RootView()
+                    } else {
+                        OnboardingView {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                hasCompletedOnboarding = true
+                            }
                         }
                     }
+                }
+                
+                if showSplash {
+                    SplashScreenView()
+                        .transition(.opacity)
                 }
             }
             .environment(themeManager)
@@ -47,6 +56,12 @@ struct LectoriaApp: App {
             .modelContainer(modelContainer)
             .onOpenURL { url in
                 handleOpenURL(url)
+            }
+            .task {
+                try? await Task.sleep(for: .seconds(1.8))
+                withAnimation(.easeOut(duration: 0.4)) {
+                    showSplash = false
+                }
             }
         }
     }
@@ -73,6 +88,42 @@ struct LectoriaApp: App {
                 }
             } catch {
                 print("Error al importar desde URL externa: \(error.localizedDescription)")
+            }
+        }
+    }
+}
+
+// MARK: - SplashScreenView
+
+struct SplashScreenView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    
+    var body: some View {
+        ZStack {
+            if colorScheme == .dark {
+                Color(red: 0.10, green: 0.10, blue: 0.12)
+                    .ignoresSafeArea()
+            } else {
+                Color(red: 0.98, green: 0.98, blue: 0.97)
+                    .ignoresSafeArea()
+            }
+            
+            VStack(spacing: AppSpacing.md) {
+                Image("AppLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 140, height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 32))
+                    .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 4)
+                
+                Text("Lectoria")
+                    .font(.system(size: 28, weight: .bold, design: .serif))
+                    .foregroundStyle(colorScheme == .dark ? .white : Color(red: 0.15, green: 0.15, blue: 0.20))
+                
+                Text("Lector inteligente con IA")
+                    .font(AppTypography.caption)
+                    .foregroundStyle(colorScheme == .dark ? .gray : Color(red: 0.50, green: 0.50, blue: 0.55))
+                    .padding(.top, 2)
             }
         }
     }
