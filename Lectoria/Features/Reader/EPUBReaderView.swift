@@ -609,14 +609,17 @@ struct EPUBReaderView: View {
         let textToProcess = selectedText
         
         let title: String
-        switch action {
-        case "define":     title = "📖 Definición"
-        case "translate":  title = "🌐 Traducción"
-        case "explain":    title = "💡 Explicación"
-        case "simplify":   title = "✏️ Simplificado"
-        case "summarize":  title = "📄 Resumen"
-        case "generateQuestions": title = "❓ Preguntas"
-        default:           title = "✨ IA"
+        if action.hasPrefix("translate") {
+            title = "🌐 Traducción"
+        } else {
+            switch action {
+            case "define":     title = "📖 Definición"
+            case "explain":    title = "💡 Explicación"
+            case "simplify":   title = "✏️ Simplificado"
+            case "summarize":  title = "📄 Resumen"
+            case "generateQuestions": title = "❓ Preguntas"
+            default:           title = "✨ IA"
+            }
         }
         
         withAnimation(.spring(response: 0.3)) {
@@ -630,11 +633,13 @@ struct EPUBReaderView: View {
             let token = dependencies.authService.sessionToken
             do {
                 let result: String
+                if action.hasPrefix("translate_") {
+                    let langCode = String(action.dropFirst("translate_".count))
+                    result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: langCode, sessionToken: token)
+                } else {
                 switch action {
                 case "define":
                     result = try await dependencies.aiService.explain(text: "Define la palabra: \(textToProcess)", sessionToken: token)
-                case "translate":
-                    result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: "en", sessionToken: token)
                 case "explain":
                     result = try await dependencies.aiService.explain(text: textToProcess, sessionToken: token)
                 case "simplify":
@@ -645,6 +650,7 @@ struct EPUBReaderView: View {
                     result = try await dependencies.aiService.generateQuestions(text: textToProcess, sessionToken: token)
                 default:
                     result = ""
+                }
                 }
                 
                 let usage = AIUsage(
@@ -745,9 +751,32 @@ struct EPUBReaderView: View {
                         .clipShape(Capsule())
                     }
                     
-                    // Traducción directa con IA
-                    Button {
-                        triggerAIAction("translate")
+                    // Traducción con selector de idioma
+                    Menu {
+                        Button(action: { triggerAIAction("translate_en") }) {
+                            Label("Inglés", systemImage: "globe.americas")
+                        }
+                        Button(action: { triggerAIAction("translate_fr") }) {
+                            Label("Francés", systemImage: "globe.europe.africa")
+                        }
+                        Button(action: { triggerAIAction("translate_pt") }) {
+                            Label("Portugués", systemImage: "globe.americas")
+                        }
+                        Button(action: { triggerAIAction("translate_de") }) {
+                            Label("Alemán", systemImage: "globe.europe.africa")
+                        }
+                        Button(action: { triggerAIAction("translate_it") }) {
+                            Label("Italiano", systemImage: "globe.europe.africa")
+                        }
+                        Button(action: { triggerAIAction("translate_ja") }) {
+                            Label("Japonés", systemImage: "globe.asia.australia")
+                        }
+                        Button(action: { triggerAIAction("translate_zh") }) {
+                            Label("Chino", systemImage: "globe.asia.australia")
+                        }
+                        Button(action: { triggerAIAction("translate_ko") }) {
+                            Label("Coreano", systemImage: "globe.asia.australia")
+                        }
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "translate")

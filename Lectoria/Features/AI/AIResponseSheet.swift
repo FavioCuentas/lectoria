@@ -170,10 +170,10 @@ struct AIResponseSheet: View {
     }
 
     private var actionTitle: String {
+        if actionName.hasPrefix("translate") { return "Traducción de IA" }
         switch actionName {
         case "explain": return "Explicación de IA"
         case "simplify": return "Concepto Simplificado"
-        case "translate": return "Traducción de IA"
         case "summarize": return "Resumen de IA"
         case "generateQuestions": return "Preguntas de Estudio"
         default: return "Lectoria AI"
@@ -185,20 +185,27 @@ struct AIResponseSheet: View {
         
         do {
             let result: String
+            if actionName.hasPrefix("translate") {
+                let lang: String
+                if actionName.hasPrefix("translate_") {
+                    lang = String(actionName.dropFirst("translate_".count))
+                } else {
+                    lang = targetLanguage ?? "en"
+                }
+                result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: lang, sessionToken: token)
+            } else {
             switch actionName {
             case "explain":
                 result = try await dependencies.aiService.explain(text: textToProcess, sessionToken: token)
             case "simplify":
                 result = try await dependencies.aiService.simplify(text: textToProcess, sessionToken: token)
-            case "translate":
-                let lang = targetLanguage ?? "en"
-                result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: lang, sessionToken: token)
             case "summarize":
                 result = try await dependencies.aiService.summarize(text: textToProcess, sessionToken: token)
             case "generateQuestions":
                 result = try await dependencies.aiService.generateQuestions(text: textToProcess, sessionToken: token)
             default:
                 result = ""
+            }
             }
 
             // Registrar el consumo de IA localmente para control de límites

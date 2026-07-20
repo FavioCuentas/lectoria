@@ -60,9 +60,16 @@ public final class AppDependencies {
         self.fileStorageService = fileStorage
 
         let env = AppEnvironment.current()
+        let isFakeConfig = env.supabaseURL.contains("fake") || env.supabaseURL.contains("lectoria.app") || env.supabaseAnonKey.contains("fake")
+        
         self.authService = authService ?? SupabaseAuthService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
 
-        let subService = subscriptionService ?? StoreKitSubscriptionService(repository: subRepo)
+        let subService: any SubscriptionService
+        if isFakeConfig {
+            subService = subscriptionService ?? MockSubscriptionService(hasActiveSubscription: true)
+        } else {
+            subService = subscriptionService ?? StoreKitSubscriptionService(repository: subRepo)
+        }
         self.subscriptionService = subService
         
         let entitlement = DefaultFeatureEntitlementService(
@@ -79,8 +86,6 @@ public final class AppDependencies {
             fileStorageService: fileStorage,
             entitlementService: entitlement
         )
-        
-        let isFakeConfig = env.supabaseURL.contains("fake") || env.supabaseURL.contains("lectoria.app") || env.supabaseAnonKey.contains("fake")
         
         if isFakeConfig {
             self.aiService = aiService ?? MockAIService(hasConsentedToAI: true)

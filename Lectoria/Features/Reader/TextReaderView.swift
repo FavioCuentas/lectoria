@@ -348,7 +348,7 @@ struct TextReaderView: View {
                 AIResponseSheet(
                     actionName: action,
                     textToProcess: textToProcess,
-                    targetLanguage: action == "translate" ? "en" : nil,
+                    targetLanguage: action.hasPrefix("translate_") ? String(action.dropFirst("translate_".count)) : nil,
                     onSaveAsNote: { responseText in
                         if let idx = selectedBlockIndex {
                             createHighlight(category: .mainIdea, blockIndex: idx, text: textToProcess, customNoteBody: responseText)
@@ -468,8 +468,31 @@ struct TextReaderView: View {
                 Button(action: { triggerAIAction("simplify", text: block.rawText, blockIndex: block.index) }) {
                     Label("Simplificar", systemImage: "text.alignleft")
                 }
-                Button(action: { triggerAIAction("translate", text: block.rawText, blockIndex: block.index) }) {
-                    Label("Traducir", systemImage: "translate")
+                Menu("Traducir") {
+                    Button(action: { triggerAIAction("translate_en", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Inglés", systemImage: "globe.americas")
+                    }
+                    Button(action: { triggerAIAction("translate_fr", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Francés", systemImage: "globe.europe.africa")
+                    }
+                    Button(action: { triggerAIAction("translate_pt", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Portugués", systemImage: "globe.americas")
+                    }
+                    Button(action: { triggerAIAction("translate_de", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Alemán", systemImage: "globe.europe.africa")
+                    }
+                    Button(action: { triggerAIAction("translate_it", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Italiano", systemImage: "globe.europe.africa")
+                    }
+                    Button(action: { triggerAIAction("translate_ja", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Japonés", systemImage: "globe.asia.australia")
+                    }
+                    Button(action: { triggerAIAction("translate_zh", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Chino", systemImage: "globe.asia.australia")
+                    }
+                    Button(action: { triggerAIAction("translate_ko", text: block.rawText, blockIndex: block.index) }) {
+                        Label("Coreano", systemImage: "globe.asia.australia")
+                    }
                 }
                 Button(action: { triggerAIAction("generateQuestions", text: block.rawText, blockIndex: block.index) }) {
                     Label("Crear pregunta", systemImage: "questionmark.circle")
