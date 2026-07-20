@@ -131,8 +131,22 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
         }
 
         func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
-            // Propagar gestos de toque
-            parent.onTap?(point)
+            let width = navigator.view.bounds.width
+            let leftZone = width * 0.25
+            let rightZone = width * 0.75
+            
+            if point.x < leftZone {
+                Task { @MainActor in
+                    _ = await navigator.goBackward()
+                }
+            } else if point.x > rightZone {
+                Task { @MainActor in
+                    _ = await navigator.goForward()
+                }
+            } else {
+                // Propagar gestos de toque
+                parent.onTap?(point)
+            }
             
             // Si el usuario toca la pantalla, despejar la selección activa
             parent.selectedText = ""

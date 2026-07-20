@@ -213,7 +213,22 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
                 return
             }
             let point = gesture.location(in: pdfView)
-            parent.onTap?(point)
+            
+            let width = pdfView.bounds.width
+            let leftZone = width * 0.25
+            let rightZone = width * 0.75
+            
+            if point.x < leftZone {
+                if pdfView.canGoToPreviousPage {
+                    pdfView.goToPreviousPage(nil)
+                }
+            } else if point.x > rightZone {
+                if pdfView.canGoToNextPage {
+                    pdfView.goToNextPage(nil)
+                }
+            } else {
+                parent.onTap?(point)
+            }
         }
 
         @objc func handlePageChanged(_ notification: Notification) {

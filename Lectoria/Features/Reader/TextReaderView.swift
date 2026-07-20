@@ -105,9 +105,27 @@ struct TextReaderView: View {
                         .padding(.top, showUI ? 100 : 40)
                         .padding(.bottom, 120)
                     }
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showUI.toggle()
+                    .onTapGesture { point in
+                        let width = UIScreen.main.bounds.width
+                        let leftZone = width * 0.25
+                        let rightZone = width * 0.75
+                        
+                        if point.x < leftZone {
+                            if let minVisible = visibleIndices.min(), minVisible > 0 {
+                                withAnimation {
+                                    proxy.scrollTo(minVisible - 1, anchor: .top)
+                                }
+                            }
+                        } else if point.x > rightZone {
+                            if let maxVisible = visibleIndices.max(), maxVisible < adapter.blocks.count - 1 {
+                                withAnimation {
+                                    proxy.scrollTo(maxVisible + 1, anchor: .top)
+                                }
+                            }
+                        } else {
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                showUI.toggle()
+                            }
                         }
                     }
                     .onChange(of: targetLocation) { _, newValue in
