@@ -212,6 +212,7 @@ struct RootView: View {
                                     showImportStatus = false
                                 }
                                 if let record = importedRecord {
+                                    router.selectedTab = .library
                                     router.selectedPublication = record
                                 }
                             } label: {

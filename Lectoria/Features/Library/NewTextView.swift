@@ -116,6 +116,7 @@ struct NewTextView: View {
                 isLoading = false
                 dismiss()
                 // Navegar automáticamente al nuevo texto
+                router.selectedTab = .library
                 router.selectedPublication = record
             } catch {
                 isLoading = false
