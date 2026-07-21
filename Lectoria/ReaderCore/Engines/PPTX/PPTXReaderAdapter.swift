@@ -71,7 +71,7 @@ final class PPTXReaderAdapter: PublicationEngine {
     func search(_ query: String) async throws -> [SearchResult] {
         let currentBlocks = blocks
 
-        return try await Task.detached(priority: .userInitiated) { [currentBlocks] in
+        return await Task.detached(priority: .userInitiated) { [currentBlocks] in
             var results: [SearchResult] = []
             let lowerQuery = query.lowercased()
 
@@ -106,7 +106,7 @@ final class PPTXReaderAdapter: PublicationEngine {
     func tableOfContents() async throws -> [TOCItem] {
         let currentBlocks = blocks
 
-        return try await Task.detached(priority: .userInitiated) { [currentBlocks] in
+        return await Task.detached(priority: .userInitiated) { [currentBlocks] in
             var items: [TOCItem] = []
 
             for block in currentBlocks {
@@ -185,7 +185,7 @@ final class PPTXReaderAdapter: PublicationEngine {
     }
 
     /// Encuentra el título de diapositiva más cercano para un bloque dado.
-    private static func findSlideTitle(forBlockIndex blockIndex: Int, in blocks: [TextBlock]) -> String {
+    nonisolated private static func findSlideTitle(forBlockIndex blockIndex: Int, in blocks: [TextBlock]) -> String {
         // Recorrer hacia atrás desde blockIndex para encontrar el heading de nivel 1 más cercano
         for i in stride(from: min(blockIndex, blocks.count - 1), through: 0, by: -1) {
             if case let .heading(text, level) = blocks[i].type, level == 1 {

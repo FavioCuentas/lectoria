@@ -44,7 +44,7 @@ final class TextReaderAdapter: PublicationEngine {
         let isMarkdown = record.publicationType == .markdown
         
         // Procesar en segundo plano para evitar bloqueos si el archivo es grande
-        let parsedBlocks = try await Task.detached(priority: .userInitiated) { [content, isMarkdown] in
+        let parsedBlocks = await Task.detached(priority: .userInitiated) { [content, isMarkdown] in
             return Self.parseText(content, isMarkdown: isMarkdown)
         }.value
         
@@ -72,7 +72,7 @@ final class TextReaderAdapter: PublicationEngine {
     func search(_ query: String) async throws -> [SearchResult] {
         let currentBlocks = blocks
         
-        return try await Task.detached(priority: .userInitiated) { [currentBlocks] in
+        return await Task.detached(priority: .userInitiated) { [currentBlocks] in
             var results: [SearchResult] = []
             let lowerQuery = query.lowercased()
             
@@ -104,7 +104,7 @@ final class TextReaderAdapter: PublicationEngine {
     func tableOfContents() async throws -> [TOCItem] {
         let currentBlocks = blocks
         
-        return try await Task.detached(priority: .userInitiated) { [currentBlocks] in
+        return await Task.detached(priority: .userInitiated) { [currentBlocks] in
             var items: [TOCItem] = []
             
             for block in currentBlocks {
