@@ -29,8 +29,8 @@ struct NotesView: View {
 
     enum FilterTab: String, CaseIterable, Identifiable {
         case all = "Todos"
-        case highlights = "Destacados"
         case notes = "Notas"
+        case aiQueries = "Consultas IA"
         var id: String { rawValue }
     }
 
@@ -313,10 +313,29 @@ struct NotesView: View {
 
         // Aplicar filtro de tipo
         switch selectedFilter {
-        case .highlights:
-            items = items.filter { $0.highlight != nil }
         case .notes:
-            items = items.filter { $0.note != nil }
+            // Mostrar solo notas normales redactadas por el usuario (no consultas IA)
+            items = items.filter { item in
+                guard item.note != nil else { return false }
+                if let hl = item.highlight {
+                    let cat = hl.category ?? ""
+                    return cat != HighlightCategory.dictionary.rawValue &&
+                           cat != HighlightCategory.translation.rawValue &&
+                           cat != HighlightCategory.ai.rawValue
+                }
+                return true
+            }
+        case .aiQueries:
+            // Mostrar solo consultas IA
+            items = items.filter { item in
+                if let hl = item.highlight {
+                    let cat = hl.category ?? ""
+                    return cat == HighlightCategory.dictionary.rawValue ||
+                           cat == HighlightCategory.translation.rawValue ||
+                           cat == HighlightCategory.ai.rawValue
+                }
+                return false
+            }
         case .all:
             break
         }
@@ -347,6 +366,9 @@ struct NotesView: View {
         case "Evidencia": return .green
         case "Acción": return .orange
         case "Cita": return .pink
+        case "Diccionario": return Color(red: 0.18, green: 0.60, blue: 0.60)
+        case "Traducción": return Color(red: 0.36, green: 0.36, blue: 0.75)
+        case "IA": return Color(red: 0.12, green: 0.53, blue: 0.82)
         default: return .yellow
         }
     }

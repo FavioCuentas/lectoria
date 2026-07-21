@@ -58,4 +58,11 @@ public enum HighlightCategory: String, Codable, Sendable, CaseIterable {
     case evidence = "Evidencia"
     case action = "Acción"
     case quote = "Cita"
+    case dictionary = "Diccionario"
+    case translation = "Traducción"
+    case ai = "IA"
+    
+    public static var userSelectableCases: [HighlightCategory] {
+        [.mainIdea, .question, .evidence, .action, .quote]
+    }
 }

@@ -78,14 +78,37 @@ struct EditAnnotationSheet: View {
                                 .font(AppTypography.captionBold)
                                 .foregroundStyle(AppColor.textSecondary(for: theme))
                             
-                            Picker("Categoría", selection: $selectedCategory) {
-                                ForEach(HighlightCategory.allCases, id: \.self) { cat in
-                                    Text(cat.rawValue).tag(cat)
+                        // 2. Selector de categoría (si es destacado)
+                        if HighlightCategory.userSelectableCases.contains(selectedCategory) {
+                            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                                Text("Categoría de Estudio")
+                                    .font(AppTypography.captionBold)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                                
+                                Picker("Categoría", selection: $selectedCategory) {
+                                    ForEach(HighlightCategory.userSelectableCases, id: \.self) { cat in
+                                        Text(cat.rawValue).tag(cat)
+                                    }
                                 }
+                                .pickerStyle(.segmented)
                             }
-                            .pickerStyle(.segmented)
+                            .padding(.horizontal, AppSpacing.md)
+                        } else {
+                            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                                Text("Tipo de Consulta IA")
+                                    .font(AppTypography.captionBold)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                                
+                                Text(selectedCategory.rawValue)
+                                    .font(AppTypography.bodyBold)
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, AppSpacing.md)
+                                    .padding(.vertical, 4)
+                                    .background(categoryColor(selectedCategory))
+                                    .clipShape(Capsule())
+                            }
+                            .padding(.horizontal, AppSpacing.md)
                         }
-                        .padding(.horizontal, AppSpacing.md)
                     }
                     
                     // 3. Editor de notas
@@ -241,6 +264,9 @@ struct EditAnnotationSheet: View {
         case .evidence: return .green
         case .action: return .orange
         case .quote: return .pink
+        case .dictionary: return Color(red: 0.18, green: 0.60, blue: 0.60)
+        case .translation: return Color(red: 0.36, green: 0.36, blue: 0.75)
+        case .ai: return Color(red: 0.12, green: 0.53, blue: 0.82)
         }
     }
     
@@ -251,6 +277,9 @@ struct EditAnnotationSheet: View {
         case .evidence: return "green"
         case .action: return "orange"
         case .quote: return "pink"
+        case .dictionary: return "dictionary"
+        case .translation: return "translation"
+        case .ai: return "ai"
         }
     }
 }

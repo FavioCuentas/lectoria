@@ -41,6 +41,7 @@ struct PDFReaderView: View {
     @State private var showPaywall = false
     @State private var showConsent = false
     @State private var pendingAIAction: String? = nil
+    @State private var lastAIAction = ""
     
     // Respuesta inline (globo flotante)
     @State private var showInlineBubble = false
@@ -667,6 +668,9 @@ struct PDFReaderView: View {
         case .evidence: return Color(red: 0.25, green: 0.65, blue: 0.45)   // Verde
         case .action:   return Color(red: 0.85, green: 0.47, blue: 0.34)   // Coral
         case .quote:    return Color(red: 0.80, green: 0.42, blue: 0.55)   // Rosa
+        case .dictionary:  return Color(red: 0.18, green: 0.60, blue: 0.60) // Turquesa
+        case .translation: return Color(red: 0.36, green: 0.36, blue: 0.75) // Índigo
+        case .ai:          return Color(red: 0.12, green: 0.53, blue: 0.82) // Celeste
         }
     }
     
@@ -677,6 +681,9 @@ struct PDFReaderView: View {
         case .evidence: return "evidence"
         case .action: return "action"
         case .quote: return "quote"
+        case .dictionary: return "dictionary"
+        case .translation: return "translation"
+        case .ai: return "ai"
         }
     }
 
@@ -797,6 +804,7 @@ struct PDFReaderView: View {
     /// Ejecuta la acción de IA y muestra el resultado en el globo flotante inline.
     private func executeInlineAI(action: String) {
         let textToProcess = selectedText
+        lastAIAction = action
         
         // Configurar título según la acción
         let title: String
@@ -880,7 +888,7 @@ struct PDFReaderView: View {
             VStack(spacing: isPad ? AppSpacing.md : AppSpacing.sm) {
                 // Fila 1: Colores de subrayado
                 HStack(spacing: isPad ? AppSpacing.lg : AppSpacing.md) {
-                    ForEach(HighlightCategory.allCases, id: \.self) { category in
+                    ForEach(HighlightCategory.userSelectableCases, id: \.self) { category in
                         Button {
                             createHighlight(category: category)
                         } label: {
@@ -1106,7 +1114,15 @@ struct PDFReaderView: View {
                     
                     // Botón guardar como nota
                     Button {
-                        createHighlight(category: .mainIdea, customNoteBody: inlineBubbleText)
+                        let category: HighlightCategory
+                        if lastAIAction.hasPrefix("translate") {
+                            category = .translation
+                        } else if lastAIAction == "define" {
+                            category = .dictionary
+                        } else {
+                            category = .ai
+                        }
+                        createHighlight(category: category, customNoteBody: inlineBubbleText)
                         withAnimation(.spring(response: 0.3)) {
                             showInlineBubble = false
                         }
@@ -1155,7 +1171,7 @@ struct PDFReaderView: View {
                     get: { pendingCategory ?? .mainIdea },
                     set: { pendingCategory = $0 }
                 )) {
-                    ForEach(HighlightCategory.allCases, id: \.self) { cat in
+                    ForEach(HighlightCategory.userSelectableCases, id: \.self) { cat in
                         Text(cat.rawValue).tag(cat)
                     }
                 }

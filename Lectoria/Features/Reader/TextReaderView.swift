@@ -350,11 +350,17 @@ struct TextReaderView: View {
                     textToProcess: textToProcess,
                     targetLanguage: action.hasPrefix("translate_") ? String(action.dropFirst("translate_".count)) : nil,
                     onSaveAsNote: { responseText in
-                        if let idx = selectedBlockIndex {
-                            createHighlight(category: .mainIdea, blockIndex: idx, text: textToProcess, customNoteBody: responseText)
+                        let category: HighlightCategory
+                        if action.hasPrefix("translate") {
+                            category = .translation
+                        } else if action == "define" {
+                            category = .dictionary
                         } else {
-                            createHighlight(category: .mainIdea, blockIndex: 0, text: textToProcess, customNoteBody: responseText)
+                            category = .ai
                         }
+                        
+                        let idx = selectedBlockIndex ?? 0
+                        createHighlight(category: category, blockIndex: idx, text: textToProcess, customNoteBody: responseText)
                     }
                 )
             }
@@ -439,7 +445,7 @@ struct TextReaderView: View {
                 }
             } else {
                 Menu("Destacar") {
-                    ForEach(HighlightCategory.allCases, id: \.self) { cat in
+                    ForEach(HighlightCategory.userSelectableCases, id: \.self) { cat in
                         Button {
                             createHighlight(category: cat, blockIndex: block.index, text: block.rawText)
                         } label: {
@@ -904,6 +910,12 @@ struct TextReaderView: View {
             return AppColor.highlightAction(for: theme)
         case "cita", "pink", "quote":
             return AppColor.highlightQuote(for: theme)
+        case "diccionario", "dictionary", "teal":
+            return AppColor.highlightDictionary(for: theme)
+        case "traducción", "traduccion", "translation", "indigo":
+            return AppColor.highlightTranslation(for: theme)
+        case "ia", "ai", "cyan":
+            return AppColor.highlightAI(for: theme)
         default:
             return .clear
         }
@@ -916,6 +928,9 @@ struct TextReaderView: View {
         case .evidence: return "evidence"
         case .action: return "action"
         case .quote: return "quote"
+        case .dictionary: return "dictionary"
+        case .translation: return "translation"
+        case .ai: return "ai"
         }
     }
 
@@ -1030,7 +1045,7 @@ struct TextReaderView: View {
                     get: { pendingCategory ?? .mainIdea },
                     set: { pendingCategory = $0 }
                 )) {
-                    ForEach(HighlightCategory.allCases, id: \.self) { cat in
+                    ForEach(HighlightCategory.userSelectableCases, id: \.self) { cat in
                         Text(cat.rawValue).tag(cat)
                     }
                 }

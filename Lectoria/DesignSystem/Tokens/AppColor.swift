@@ -182,6 +182,35 @@ enum AppColor {
         }
     }
 
+    // MARK: - Colores de destacado (Highlight categories)
+    
+    /// Diccionario — turquesa/teal.
+    static func highlightDictionary(for theme: AppTheme) -> Color {
+        switch theme {
+        case .light: Color(red: 0.18, green: 0.60, blue: 0.60).opacity(0.20)
+        case .dark: Color(red: 0.28, green: 0.70, blue: 0.70).opacity(0.25)
+        case .sepia: Color(red: 0.20, green: 0.55, blue: 0.55).opacity(0.20)
+        }
+    }
+
+    /// Traducción — azul índigo.
+    static func highlightTranslation(for theme: AppTheme) -> Color {
+        switch theme {
+        case .light: Color(red: 0.36, green: 0.36, blue: 0.75).opacity(0.20)
+        case .dark: Color(red: 0.46, green: 0.46, blue: 0.85).opacity(0.25)
+        case .sepia: Color(red: 0.38, green: 0.38, blue: 0.68).opacity(0.20)
+        }
+    }
+
+    /// IA — celeste brillante.
+    static func highlightAI(for theme: AppTheme) -> Color {
+        switch theme {
+        case .light: Color(red: 0.12, green: 0.53, blue: 0.82).opacity(0.20)
+        case .dark: Color(red: 0.22, green: 0.63, blue: 0.92).opacity(0.25)
+        case .sepia: Color(red: 0.15, green: 0.48, blue: 0.75).opacity(0.20)
+        }
+    }
+
     // MARK: - Tab bar
 
     /// Color de ítem activo en el tab bar.
