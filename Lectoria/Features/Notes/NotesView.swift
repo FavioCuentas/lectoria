@@ -25,6 +25,7 @@ struct NotesView: View {
     @State private var selectedPublication: PublicationRecord? = nil
     @State private var initialPDFLocation: PDFLocation? = nil
     @State private var initialTextLocation: TextLocation? = nil
+    @State private var editingItem: AnnotationItem? = nil
 
     enum FilterTab: String, CaseIterable, Identifiable {
         case all = "Todos"
@@ -124,6 +125,24 @@ struct NotesView: View {
             .task {
                 await loadData()
             }
+            .sheet(item: $editingItem) { item in
+                EditAnnotationSheet(
+                    highlight: item.highlight,
+                    note: item.note
+                ) { updatedHl, updatedNote in
+                    Task {
+                        if let hl = updatedHl {
+                            try? await dependencies.highlightRepository.save(hl)
+                        }
+                        if let note = updatedNote {
+                            try? await dependencies.noteRepository.save(note)
+                        }
+                        await loadData()
+                    }
+                } onDelete: {
+                    deleteItem(item)
+                }
+            }
         }
     }
 
@@ -133,95 +152,141 @@ struct NotesView: View {
     private func annotationCard(_ item: AnnotationItem, theme: AppTheme) -> some View {
         let pubTitle = publications.first(where: { $0.id == item.publicationID })?.title ?? "Libro desconocido"
         
-        Button {
-            navigateToPosition(item)
-        } label: {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                // Encabezado con el libro y la fecha
-                HStack {
-                    Text(pubTitle)
-                        .font(AppTypography.captionBold)
-                        .foregroundStyle(AppColor.accent(for: theme))
-                        .lineLimit(1)
-                    
-                    Spacer()
-                    
-                    Text(item.date, style: .date)
-                        .font(AppTypography.caption)
-                        .foregroundStyle(AppColor.textTertiary(for: theme))
-                }
-
-                if let highlight = item.highlight {
-                    // Cuerpo del destacado
-                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                        HStack {
-                            Text(highlight.category ?? "Destacado")
-                                .font(AppTypography.captionBold)
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, AppSpacing.sm)
-                                .padding(.vertical, 2)
-                                .background(categoryColor(highlight.category))
-                                .clipShape(Capsule())
-                            
-                            Spacer()
-                        }
-
-                        Text("\"\(highlight.selectedText)\"")
-                            .font(AppTypography.body.italic())
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
-                            .multilineTextAlignment(.leading)
-                            .padding(AppSpacing.sm)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(categoryColor(highlight.category).opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.xs))
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            // Encabezado con el libro, la fecha y el menú de acciones rápidas
+            HStack {
+                Text(pubTitle)
+                    .font(AppTypography.captionBold)
+                    .foregroundStyle(AppColor.accent(for: theme))
+                    .lineLimit(1)
+                
+                Spacer()
+                
+                Text(item.date, style: .date)
+                    .font(AppTypography.caption)
+                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                
+                Menu {
+                    Button {
+                        navigateToPosition(item)
+                    } label: {
+                        Label("Ir a la lectura", systemImage: "book")
                     }
+                    Button {
+                        editingItem = item
+                    } label: {
+                        Label("Editar", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        deleteItem(item)
+                    } label: {
+                        Label("Eliminar", systemImage: "trash")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                        .padding(.leading, AppSpacing.xs)
+                        .contentShape(Rectangle())
                 }
+            }
 
-                if let note = item.note {
-                    // Cuerpo de la nota
-                    VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                        if item.highlight != nil {
-                            // Subtítulo indicador de nota vinculada
-                            Text("Nota vinculada:")
-                                .font(AppTypography.footnote.weight(.semibold))
-                                .foregroundStyle(AppColor.textSecondary(for: theme))
-                        }
+            if let highlight = item.highlight {
+                // Cuerpo del destacado
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    HStack {
+                        Text(highlight.category ?? "Destacado")
+                            .font(AppTypography.captionBold)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, AppSpacing.sm)
+                            .padding(.vertical, 2)
+                            .background(categoryColor(highlight.category))
+                            .clipShape(Capsule())
                         
-                        Text(note.body)
-                            .font(AppTypography.body)
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        if !note.tags.isEmpty {
-                            // Etiquetas de la nota
-                            HStack(spacing: AppSpacing.xs) {
-                                ForEach(note.tags, id: \.self) { tag in
-                                    Text("#\(tag)")
-                                        .font(AppTypography.caption)
-                                        .foregroundStyle(AppColor.textSecondary(for: theme))
-                                }
+                        Spacer()
+                    }
+
+                    Text("\"\(highlight.selectedText)\"")
+                        .font(AppTypography.body.italic())
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .multilineTextAlignment(.leading)
+                        .padding(AppSpacing.sm)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(categoryColor(highlight.category).opacity(0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.xs))
+                }
+            }
+
+            if let note = item.note {
+                // Cuerpo de la nota
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    if item.highlight != nil {
+                        // Subtítulo indicador de nota vinculada
+                        Text("Nota vinculada:")
+                            .font(AppTypography.footnote.weight(.semibold))
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                    }
+                    
+                    Text(note.body)
+                        .font(AppTypography.body)
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    if !note.tags.isEmpty {
+                        // Etiquetas de la nota
+                        HStack(spacing: AppSpacing.xs) {
+                            ForEach(note.tags, id: \.self) { tag in
+                                Text("#\(tag)")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
                             }
-                            .padding(.top, 2)
                         }
+                        .padding(.top, 2)
                     }
                 }
             }
-            .padding(AppSpacing.md)
-            .background(AppColor.surface(for: theme))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
-            .shadow(color: AppShadow.subtle(for: theme).color,
-                    radius: AppShadow.subtle(for: theme).radius,
-                    x: AppShadow.subtle(for: theme).x,
-                    y: AppShadow.subtle(for: theme).y)
         }
-        .buttonStyle(.plain)
-        .swipeActions {
+        .padding(AppSpacing.md)
+        .background(AppColor.surface(for: theme))
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+        .shadow(color: AppShadow.subtle(for: theme).color,
+                radius: AppShadow.subtle(for: theme).radius,
+                x: AppShadow.subtle(for: theme).x,
+                y: AppShadow.subtle(for: theme).y)
+        .contentShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+        .onTapGesture {
+            navigateToPosition(item)
+        }
+        .contextMenu {
+            Button {
+                navigateToPosition(item)
+            } label: {
+                Label("Ir a la lectura", systemImage: "book")
+            }
+            Button {
+                editingItem = item
+            } label: {
+                Label("Editar", systemImage: "pencil")
+            }
             Button(role: .destructive) {
                 deleteItem(item)
             } label: {
                 Label("Eliminar", systemImage: "trash")
             }
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                deleteItem(item)
+            } label: {
+                Label("Eliminar", systemImage: "trash")
+            }
+            Button {
+                editingItem = item
+            } label: {
+                Label("Editar", systemImage: "pencil")
+            }
+            .tint(.blue)
         }
     }
 
