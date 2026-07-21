@@ -73,12 +73,6 @@ struct EditAnnotationSheet: View {
                         .padding(.horizontal, AppSpacing.md)
                         
                         // 2. Selector de categoría (si es destacado)
-                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                            Text("Categoría de Estudio")
-                                .font(AppTypography.captionBold)
-                                .foregroundStyle(AppColor.textSecondary(for: theme))
-                            
-                        // 2. Selector de categoría (si es destacado)
                         if HighlightCategory.userSelectableCases.contains(selectedCategory) {
                             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                                 Text("Categoría de Estudio")
