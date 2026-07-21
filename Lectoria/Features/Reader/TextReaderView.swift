@@ -16,9 +16,46 @@ struct TextReaderView: View {
     @Environment(\.dismiss) private var dismiss
 
     // Estado del ciclo de vida del lector
-    @State private var adapter = TextReaderAdapter()
+    @State private var textAdapter = TextReaderAdapter()
+    @State private var pptxAdapter = PPTXReaderAdapter()
     @State private var isLoading = true
     @State private var loadingError: String? = nil
+
+    private var blocks: [TextBlock] {
+        record.publicationType == .pptx ? pptxAdapter.blocks : textAdapter.blocks
+    }
+
+    private func openAdapter() async throws {
+        if record.publicationType == .pptx {
+            try await pptxAdapter.open(publication: record)
+        } else {
+            try await textAdapter.open(publication: record)
+        }
+    }
+
+    private func closeAdapter() async {
+        if record.publicationType == .pptx {
+            await pptxAdapter.close()
+        } else {
+            await textAdapter.close()
+        }
+    }
+
+    private func searchAdapter(_ query: String) async throws -> [SearchResult] {
+        if record.publicationType == .pptx {
+            return try await pptxAdapter.search(query)
+        } else {
+            return try await textAdapter.search(query)
+        }
+    }
+
+    private func getTableOfContents() async throws -> [TOCItem] {
+        if record.publicationType == .pptx {
+            return try await pptxAdapter.tableOfContents()
+        } else {
+            return try await textAdapter.tableOfContents()
+        }
+    }
 
     // Ubicación de lectura y navegación
     @State private var initialLocation: TextLocation? = nil
@@ -88,7 +125,7 @@ struct TextReaderView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: AppSpacing.md) {
-                            ForEach(adapter.blocks) { block in
+                            ForEach(blocks) { block in
                                 blockView(block)
                                     .id(block.index)
                                     .onAppear {
@@ -117,7 +154,7 @@ struct TextReaderView: View {
                                 }
                             }
                         } else if point.x > rightZone {
-                            if let maxVisible = visibleIndices.max(), maxVisible < adapter.blocks.count - 1 {
+                            if let maxVisible = visibleIndices.max(), maxVisible < blocks.count - 1 {
                                 withAnimation {
                                     proxy.scrollTo(maxVisible + 1, anchor: .top)
                                 }
@@ -155,7 +192,7 @@ struct TextReaderView: View {
         }
         .onDisappear {
             Task {
-                await adapter.close()
+                await closeAdapter()
             }
         }
     }
@@ -287,7 +324,7 @@ struct TextReaderView: View {
                 // Barra Inferior (Progreso)
                 VStack(spacing: AppSpacing.xs) {
                     let currentBlockIndex = currentLocation?.blockIndex ?? 0
-                    let totalBlocks = adapter.blocks.count
+                    let totalBlocks = blocks.count
                     let progressPercent = totalBlocks > 1 ? Double(currentBlockIndex) / Double(totalBlocks - 1) : 0.0
 
                     HStack {
@@ -848,7 +885,7 @@ struct TextReaderView: View {
             }
 
             // 2. Abrir la publicación con el adaptador
-            try await adapter.open(publication: record)
+            try await openAdapter()
             
             // Registrar fecha de apertura
             var updatedRecord = record
@@ -856,7 +893,7 @@ struct TextReaderView: View {
             try? await dependencies.publicationRepository.save(updatedRecord)
 
             // 3. Obtener el índice (TOC)
-            self.tocItems = (try? await adapter.tableOfContents()) ?? []
+            self.tocItems = (try? await getTableOfContents()) ?? []
 
             // 4. Cargar marcadores locales
             await loadBookmarks()
@@ -936,7 +973,7 @@ struct TextReaderView: View {
 
     private func createHighlight(category: HighlightCategory, blockIndex: Int, text: String, customNoteBody: String? = nil) {
         let colorToken = categoryColorToken(category)
-        let total = adapter.blocks.count
+        let total = blocks.count
         let pct = total > 1 ? Double(blockIndex) / Double(total - 1) : 0.0
         let loc = TextLocation(blockIndex: blockIndex, characterOffset: 0, percentage: pct)
         let anchorData = (try? JSONEncoder().encode(loc)) ?? Data()
@@ -1092,8 +1129,8 @@ struct TextReaderView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Guardar") {
                         let selectedCat = pendingCategory ?? .mainIdea
-                        if let index = selectedBlockIndex, index < adapter.blocks.count {
-                            let block = adapter.blocks[index]
+                        if let index = selectedBlockIndex, index < blocks.count {
+                            let block = blocks[index]
                             createHighlight(category: selectedCat, blockIndex: index, text: block.rawText, customNoteBody: noteBody)
                         }
                         showNoteEditor = false
@@ -1106,7 +1143,7 @@ struct TextReaderView: View {
 
     private func saveReadingProgress(location: TextLocation) {
         Task {
-            let total = adapter.blocks.count
+            let total = blocks.count
             let percentage = total > 1 ? Double(location.blockIndex) / Double(total - 1) : 0.0
             let chapterTitle = "Párrafo \(location.blockIndex + 1)"
             let locatorJSON = (try? String(data: JSONEncoder().encode(location), encoding: .utf8)) ?? ""
@@ -1194,7 +1231,7 @@ struct TextReaderView: View {
 
         Task {
             do {
-                let results = try await adapter.search(searchQuery)
+                let results = try await searchAdapter(searchQuery)
                 await MainActor.run {
                     self.searchResults = results
                     self.isSearching = false
@@ -1210,10 +1247,10 @@ struct TextReaderView: View {
     // MARK: - Helpers
 
     private func updateCurrentLocation() {
-        guard !adapter.blocks.isEmpty else { return }
+        guard !blocks.isEmpty else { return }
 
         if let firstVisible = visibleIndices.min() {
-            let percentage = Double(firstVisible) / Double(max(1, adapter.blocks.count - 1))
+            let percentage = Double(firstVisible) / Double(max(1, blocks.count - 1))
             self.currentLocation = TextLocation(
                 blockIndex: firstVisible,
                 characterOffset: 0,

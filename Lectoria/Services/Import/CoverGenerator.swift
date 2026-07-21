@@ -79,6 +79,8 @@ public final class CoverGenerator: @unchecked Sendable {
             try generatePDFCover(from: url, to: destinationURL)
         case .epub, .txt, .markdown, .pastedText:
             try generateTextBasedCover(title: metadata.title, author: metadata.author, to: destinationURL)
+        case .pptx:
+            try generatePresentationCover(title: metadata.title, author: metadata.author, to: destinationURL)
         }
 
         return coverFileName
@@ -169,6 +171,87 @@ public final class CoverGenerator: @unchecked Sendable {
                 .paragraphStyle: paragraphStyle
             ]
             let logoRect = CGRect(x: 24, y: 280, width: 192, height: 20)
+            "LECTORIA".draw(in: logoRect, withAttributes: logoAttrs)
+        }
+
+        guard let data = image.jpegData(compressionQuality: 0.8) else {
+            throw CoverGeneratorError.failedToSaveCover("No se pudo obtener la representación JPEG.")
+        }
+
+        do {
+            try data.write(to: destinationURL)
+        } catch {
+            throw CoverGeneratorError.failedToSaveCover(error.localizedDescription)
+        }
+    }
+
+    /// Dibuja dinámicamente una portada con estética de diapositiva/presentación para archivos PPTX.
+    @MainActor
+    private func generatePresentationCover(title: String, author: String?, to destinationURL: URL) throws {
+        let size = CGSize(width: 240, height: 320)
+        let renderer = UIGraphicsImageRenderer(size: size)
+
+        let image = renderer.image { ctx in
+            // Fondo color terracota/PowerPoint premium
+            let rect = CGRect(origin: .zero, size: size)
+            let slideColor = UIColor(red: 0.85, green: 0.35, blue: 0.22, alpha: 1.0)
+            slideColor.setFill()
+            ctx.fill(rect)
+
+            // Tarjeta interna blanca/crema que simula una diapositiva
+            let innerRect = CGRect(x: 16, y: 40, width: 208, height: 180)
+            let path = UIBezierPath(roundedRect: innerRect, cornerRadius: 4)
+            UIColor.white.setFill()
+            path.fill()
+            
+            // Sombra sutil de la diapositiva
+            UIColor.black.withAlphaComponent(0.15).setStroke()
+            path.lineWidth = 1.0
+            path.stroke()
+
+            // Estilos del párrafo
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+
+            // Título de la presentación dentro de la tarjeta
+            let titleFont = UIFont(name: "HelveticaNeue-Bold", size: 14) ?? UIFont.systemFont(ofSize: 14, weight: .bold)
+            let titleAttrs: [NSAttributedString.Key: Any] = [
+                .font: titleFont,
+                .foregroundColor: UIColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0),
+                .paragraphStyle: paragraphStyle
+            ]
+            let titleRect = innerRect.insetBy(dx: 12, dy: 24)
+            title.draw(in: titleRect, withAttributes: titleAttrs)
+
+            // Autor y "PRESENTACIÓN" abajo
+            let typeFont = UIFont.systemFont(ofSize: 10, weight: .bold)
+            let typeAttrs: [NSAttributedString.Key: Any] = [
+                .font: typeFont,
+                .foregroundColor: UIColor.white.withAlphaComponent(0.8),
+                .paragraphStyle: paragraphStyle
+            ]
+            let typeRect = CGRect(x: 24, y: 240, width: 192, height: 16)
+            "PRESENTACIÓN".draw(in: typeRect, withAttributes: typeAttrs)
+
+            if let author = author, !author.isEmpty {
+                let authorFont = UIFont.systemFont(ofSize: 11, weight: .medium)
+                let authorAttrs: [NSAttributedString.Key: Any] = [
+                    .font: authorFont,
+                    .foregroundColor: UIColor.white,
+                    .paragraphStyle: paragraphStyle
+                ]
+                let authorRect = CGRect(x: 24, y: 260, width: 192, height: 30)
+                author.draw(in: authorRect, withAttributes: authorAttrs)
+            }
+
+            // Marca Lectoria
+            let logoFont = UIFont.systemFont(ofSize: 8, weight: .semibold)
+            let logoAttrs: [NSAttributedString.Key: Any] = [
+                .font: logoFont,
+                .foregroundColor: UIColor.white.withAlphaComponent(0.6),
+                .paragraphStyle: paragraphStyle
+            ]
+            let logoRect = CGRect(x: 24, y: 295, width: 192, height: 15)
             "LECTORIA".draw(in: logoRect, withAttributes: logoAttrs)
         }
 

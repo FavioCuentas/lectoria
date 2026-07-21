@@ -15,7 +15,7 @@ public enum ImportError: LocalizedError, Sendable {
         case .duplicateDocument(let title):
             return String(localized: "El documento '\(title)' ya existe en tu biblioteca.", comment: "Error message")
         case .unsupportedFormat(let ext):
-            return String(localized: "El formato de archivo .\(ext) no es compatible. Lectoria soporta EPUB, PDF, TXT y Markdown.", comment: "Error message")
+            return String(localized: "El formato de archivo .\(ext) no es compatible. Lectoria soporta EPUB, PDF, PPTX, TXT y Markdown.", comment: "Error message")
         case .securityAccessFailed:
             return String(localized: "No se pudo obtener acceso de seguridad al archivo seleccionado.", comment: "Error message")
         case .fileAccessFailed(let msg):

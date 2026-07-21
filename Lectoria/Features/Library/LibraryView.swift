@@ -55,7 +55,7 @@ struct LibraryView: View {
                 PDFReaderView(record: record)
             case .epub:
                 EPUBReaderView(record: record)
-            case .txt, .markdown, .pastedText:
+            case .txt, .markdown, .pastedText, .pptx:
                 TextReaderView(record: record)
             }
         }

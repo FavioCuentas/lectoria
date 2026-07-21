@@ -118,7 +118,7 @@ struct NotesView: View {
                     PDFReaderView(record: pub, initialLocation: initialPDFLocation)
                 case .epub:
                     EPUBReaderView(record: pub)
-                case .txt, .markdown, .pastedText:
+                case .txt, .markdown, .pastedText, .pptx:
                     TextReaderView(record: pub, initialLocation: initialTextLocation)
                 }
             }

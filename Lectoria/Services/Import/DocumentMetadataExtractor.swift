@@ -1,5 +1,6 @@
 import Foundation
 import PDFKit
+import zlib
 
 // MARK: - ExtractedMetadata
 
@@ -88,6 +89,146 @@ public final class DocumentMetadataExtractor: Sendable {
             
         case .pastedText:
             return ExtractedMetadata(title: String(localized: "Texto pegado", comment: "Title for pasted text"))
+            
+        case .pptx:
+            if let metadata = extractPPTXMetadata(from: url, defaultTitle: defaultTitle) {
+                return metadata
+            }
+            return ExtractedMetadata(title: defaultTitle)
+        }
+    }
+
+    // MARK: - PPTX Metadata Extraction Helpers
+
+    private func extractPPTXMetadata(from url: URL, defaultTitle: String) -> ExtractedMetadata? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        var offset = 0
+        
+        while offset + 30 <= data.count {
+            let sig = data.subdata(in: offset..<(offset + 4))
+            guard sig == Data([0x50, 0x4b, 0x03, 0x04]) else { break }
+            
+            let compressionMethod = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 8, as: UInt16.self).littleEndian }
+            let compressedSize = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 18, as: UInt32.self).littleEndian }
+            let uncompressedSize = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 22, as: UInt32.self).littleEndian }
+            let fileNameLength = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 26, as: UInt16.self).littleEndian }
+            let extraFieldLength = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 28, as: UInt16.self).littleEndian }
+            
+            let fileNameStart = offset + 30
+            let fileNameEnd = fileNameStart + Int(fileNameLength)
+            guard fileNameEnd <= data.count else { break }
+            
+            let fileNameData = data.subdata(in: fileNameStart..<fileNameEnd)
+            let fileName = String(data: fileNameData, encoding: .utf8) ?? ""
+            
+            let dataStart = fileNameEnd + Int(extraFieldLength)
+            let dataEnd = dataStart + Int(compressedSize)
+            guard dataEnd <= data.count else { break }
+            
+            if fileName == "docProps/core.xml" {
+                let compressedData = data.subdata(in: dataStart..<dataEnd)
+                var decompressed: Data? = nil
+                if compressionMethod == 0 {
+                    decompressed = compressedData
+                } else if compressionMethod == 8 {
+                    decompressed = decompressDeflate(compressedData, expectedSize: Int(uncompressedSize))
+                }
+                
+                if let xmlData = decompressed {
+                    return parseCoreXML(xmlData, defaultTitle: defaultTitle)
+                }
+                break
+            }
+            
+            offset = dataEnd
+        }
+        return nil
+    }
+
+    private func decompressDeflate(_ compressedData: Data, expectedSize: Int) -> Data? {
+        let bufferSize = max(expectedSize, 1024)
+        var decompressed = Data(count: bufferSize)
+
+        let result: Data? = compressedData.withUnsafeBytes { srcPtr in
+            guard let srcBase = srcPtr.baseAddress else { return nil }
+            return decompressed.withUnsafeMutableBytes { dstPtr in
+                guard let dstBase = dstPtr.baseAddress else { return nil }
+
+                var stream = z_stream()
+                stream.next_in = UnsafeMutablePointer<Bytef>(mutating: srcBase.assumingMemoryBound(to: Bytef.self))
+                stream.avail_in = UInt32(compressedData.count)
+                stream.next_out = dstBase.assumingMemoryBound(to: Bytef.self)
+                stream.avail_out = UInt32(bufferSize)
+
+                guard inflateInit2_(&stream, -15, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+                    return nil
+                }
+
+                let status = inflate(&stream, Z_FINISH)
+                inflateEnd(&stream)
+
+                if status == Z_STREAM_END || status == Z_OK {
+                    return Data(bytes: dstBase, count: Int(stream.total_out))
+                }
+                return nil
+            }
+        }
+        return result
+    }
+
+    private func parseCoreXML(_ data: Data, defaultTitle: String) -> ExtractedMetadata {
+        let parser = CorePropertiesXMLParser()
+        let xmlParser = XMLParser(data: data)
+        xmlParser.delegate = parser
+        xmlParser.parse()
+        
+        let title = parser.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let author = parser.creator?.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return ExtractedMetadata(
+            title: title.isEmpty ? defaultTitle : title,
+            author: author?.isEmpty == true ? nil : author
+        )
+    }
+}
+
+// MARK: - CorePropertiesXMLParser
+
+private final class CorePropertiesXMLParser: NSObject, XMLParserDelegate {
+    var title: String?
+    var creator: String?
+    
+    private var currentText = ""
+    private var insideTitle = false
+    private var insideCreator = false
+    
+    func parser(_ parser: XMLParser, didStartElement elementName: String,
+                namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+        if localName == "title" {
+            insideTitle = true
+            currentText = ""
+        } else if localName == "creator" {
+            insideCreator = true
+            currentText = ""
+        }
+    }
+    
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        if insideTitle || insideCreator {
+            currentText += string
+        }
+    }
+    
+    func parser(_ parser: XMLParser, didEndElement elementName: String,
+                namespaceURI: String?, qualifiedName: String?) {
+        let localName = elementName.components(separatedBy: ":").last ?? elementName
+        if localName == "title" {
+            insideTitle = false
+            title = currentText
+        } else if localName == "creator" {
+            insideCreator = false
+            creator = currentText
         }
     }
 }
