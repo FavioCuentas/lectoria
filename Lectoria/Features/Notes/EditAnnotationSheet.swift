@@ -21,6 +21,8 @@ struct EditAnnotationSheet: View {
     @State private var noteBody: String = ""
     @State private var tagsString: String = ""
     
+    @State private var exportWrapper: ExportFileWrapper? = nil
+
     init(
         highlight: Highlight?,
         note: Note?,
@@ -192,15 +194,55 @@ struct EditAnnotationSheet: View {
                 }
                 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Guardar") {
-                        saveChanges()
-                        dismiss()
+                    HStack(spacing: AppSpacing.sm) {
+                        Menu {
+                            ForEach(NoteExportFormat.allCases) { format in
+                                Button {
+                                    exportSingle(format: format)
+                                } label: {
+                                    Label(format.displayName, systemImage: format.systemImage)
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+
+                        Button("Guardar") {
+                            saveChanges()
+                            dismiss()
+                        }
+                        .font(AppTypography.bodyBold)
+                        .disabled(note == nil && noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && highlight == nil)
                     }
-                    .font(AppTypography.bodyBold)
-                    // Si no había nota antes y ahora se escribe algo, o si había nota antes
-                    .disabled(note == nil && noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && highlight == nil)
                 }
             }
+            .sheet(item: $exportWrapper) { wrapper in
+                ShareSheetView(activityItems: [wrapper.url])
+            }
+        }
+    }
+
+    private func exportSingle(format: NoteExportFormat) {
+        let dummyPub = PublicationRecord(
+            title: "Anotación de Lectoria",
+            localFileName: "note.txt",
+            publicationType: .txt,
+            fileHash: "hash"
+        )
+        let hlList = highlight != nil ? [highlight!] : []
+        let currentNote = note ?? Note(
+            publicationID: highlight?.publicationID ?? UUID(),
+            highlightID: highlight?.id,
+            body: noteBody,
+            tags: tagsString.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        )
+        let exportData = [NoteExportData(publication: dummyPub, highlights: hlList, notes: [currentNote])]
+
+        do {
+            let url = try NoteExporter.export(data: exportData, format: format)
+            self.exportWrapper = ExportFileWrapper(url: url)
+        } catch {
+            print("Error al exportar nota: \(error)")
         }
     }
     

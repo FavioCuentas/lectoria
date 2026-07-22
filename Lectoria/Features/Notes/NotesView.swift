@@ -25,18 +25,13 @@ struct NotesView: View {
     @State private var selectedPublication: PublicationRecord? = nil
     @State private var initialPDFLocation: PDFLocation? = nil
     @State private var initialTextLocation: TextLocation? = nil
-    @State private var editingItem: AnnotationItem? = nil
+    @State private var exportWrapper: ExportFileWrapper? = nil
 
     enum FilterTab: String, CaseIterable, Identifiable {
         case all = "Todos"
         case notes = "Notas"
         case aiQueries = "Consultas IA"
         var id: String { rawValue }
-    }
-
-    enum ExportFormat {
-        case txt
-        case markdown
     }
 
     var body: some View {
@@ -80,18 +75,12 @@ struct NotesView: View {
                 if !highlights.isEmpty || !notes.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            ShareLink(
-                                item: generateExportContent(format: .markdown),
-                                preview: SharePreview("Lectoria_Anotaciones.md", image: Image(systemName: "doc.text"))
-                            ) {
-                                Label("Compartir como Markdown", systemImage: "doc.plaintext")
-                            }
-
-                            ShareLink(
-                                item: generateExportContent(format: .txt),
-                                preview: SharePreview("Lectoria_Anotaciones.txt", image: Image(systemName: "doc.text"))
-                            ) {
-                                Label("Compartir como Texto Plano", systemImage: "doc.text")
+                            ForEach(NoteExportFormat.allCases) { format in
+                                Button {
+                                    exportNotes(format: format)
+                                } label: {
+                                    Label(format.displayName, systemImage: format.systemImage)
+                                }
                             }
                         } label: {
                             Image(systemName: "square.and.arrow.up")
@@ -99,6 +88,9 @@ struct NotesView: View {
                         }
                     }
                 }
+            }
+            .sheet(item: $exportWrapper) { wrapper in
+                ShareSheetView(activityItems: [wrapper.url])
             }
             .safeAreaInset(edge: .top) {
                 // Filtro segmentado de barra de herramientas superior
@@ -426,94 +418,25 @@ struct NotesView: View {
 
     // MARK: - Export Logic
 
-    private var formattedCurrentDate: String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .long
-        formatter.timeStyle = .short
-        return formatter.string(from: Date())
-    }
+    private func exportNotes(format: NoteExportFormat) {
+        var exportDataList: [NoteExportData] = []
 
-    private func generateExportContent(format: ExportFormat) -> String {
-        var result = ""
-        let isMarkdown = format == .markdown
-
-        if isMarkdown {
-            result += "# Mis Notas y Destacados de Lectoria\n\n"
-            result += "Generado el \(formattedCurrentDate)\n\n"
-        } else {
-            result += "=========================================\n"
-            result += " MIS NOTAS Y DESTACADOS DE LECTORIA\n"
-            result += "=========================================\n"
-            result += "Generado el \(formattedCurrentDate)\n\n"
+        for pub in publications {
+            let pubHighlights = highlights.filter { $0.publicationID == pub.id }
+            let pubNotes = notes.filter { $0.publicationID == pub.id }
+            if !pubHighlights.isEmpty || !pubNotes.isEmpty {
+                exportDataList.append(NoteExportData(publication: pub, highlights: pubHighlights, notes: pubNotes))
+            }
         }
 
-        let pubs = publications
-        let hlList = highlights
-        let ntList = notes
+        guard !exportDataList.isEmpty else { return }
 
-        for pub in pubs {
-            let pubHighlights = hlList.filter { $0.publicationID == pub.id }
-            let pubNotes = ntList.filter { $0.publicationID == pub.id }
-
-            if pubHighlights.isEmpty && pubNotes.isEmpty { continue }
-
-            if isMarkdown {
-                result += "## \(pub.title)\n"
-                if let author = pub.author {
-                    result += "*Autor: \(author)*\n\n"
-                }
-            } else {
-                result += "-----------------------------------------\n"
-                result += "LIBRO: \(pub.title.uppercased())\n"
-                if let author = pub.author {
-                    result += "Autor: \(author)\n"
-                }
-                result += "-----------------------------------------\n\n"
-            }
-
-            if !pubHighlights.isEmpty {
-                if isMarkdown {
-                    result += "### Destacados y subrayados\n\n"
-                } else {
-                    result += "[DESTACADOS]\n\n"
-                }
-                
-                for hl in pubHighlights {
-                    if isMarkdown {
-                        result += "* **[\(hl.category ?? "Destacado")]**: \"\(hl.selectedText)\"\n"
-                    } else {
-                        result += "* [\(hl.category ?? "Destacado")]: \"\(hl.selectedText)\"\n"
-                    }
-                    
-                    if let linkedNote = pubNotes.first(where: { $0.highlightID == hl.id }) {
-                        result += "  - Nota: \(linkedNote.body)\n"
-                        if !linkedNote.tags.isEmpty {
-                            result += "  - Etiquetas: \(linkedNote.tags.map { "#\($0)" }.joined(separator: " "))\n"
-                        }
-                    }
-                    result += "\n"
-                }
-            }
-
-            let generalNotes = pubNotes.filter { $0.highlightID == nil }
-            if !generalNotes.isEmpty {
-                if isMarkdown {
-                    result += "### Notas independientes\n\n"
-                } else {
-                    result += "[NOTAS GENERALES]\n\n"
-                }
-                
-                for note in generalNotes {
-                    result += "* \(note.body)\n"
-                    if !note.tags.isEmpty {
-                        result += "  - Etiquetas: \(note.tags.map { "#\($0)" }.joined(separator: " "))\n"
-                    }
-                    result += "\n"
-                }
-            }
-            result += "\n"
+        do {
+            let url = try NoteExporter.export(data: exportDataList, format: format)
+            self.exportWrapper = ExportFileWrapper(url: url)
+        } catch {
+            print("Error al exportar notas: \(error)")
         }
-        return result
     }
 
     // MARK: - AnnotationItem Wrapper
@@ -525,4 +448,11 @@ struct NotesView: View {
         let note: Note?
         let date: Date
     }
+}
+
+// MARK: - ExportFileWrapper
+
+struct ExportFileWrapper: Identifiable {
+    let id = UUID()
+    let url: URL
 }
