@@ -82,6 +82,9 @@ struct LibraryView: View {
                 .accessibilityLabel(String(localized: "Importar", comment: "Library import button"))
             }
         }
+        .task {
+            await dependencies.seedSamplePresentationIfNeeded()
+        }
     }
 
     // MARK: - Filter bar
@@ -199,6 +202,8 @@ struct LibraryView: View {
                 return record.publicationType == .txt
             case .markdown:
                 return record.publicationType == .markdown
+            case .pptx:
+                return record.publicationType == .pptx
             case .inProgress:
                 let progress = model.progressList.max(by: { $0.updatedAt < $1.updatedAt })?.percentage ?? 0.0
                 return progress > 0.0 && progress < 1.0
@@ -228,6 +233,7 @@ enum LibraryFilter: String, CaseIterable, Identifiable, Sendable {
     case all
     case epub
     case pdf
+    case pptx
     case txt
     case markdown
     case inProgress
@@ -242,6 +248,7 @@ enum LibraryFilter: String, CaseIterable, Identifiable, Sendable {
         case .all: String(localized: "Todos", comment: "Library filter: all")
         case .epub: "EPUB"
         case .pdf: "PDF"
+        case .pptx: String(localized: "Diapositivas", comment: "Library filter: presentations")
         case .txt: String(localized: "Texto", comment: "Library filter: text")
         case .markdown: "Markdown"
         case .inProgress: String(localized: "En progreso", comment: "Library filter: in progress")
@@ -256,6 +263,7 @@ enum LibraryFilter: String, CaseIterable, Identifiable, Sendable {
         case .all: nil
         case .epub: "book"
         case .pdf: "doc.richtext"
+        case .pptx: "rectangle.on.rectangle.angled"
         case .txt: "doc.text"
         case .markdown: "text.document"
         case .inProgress: "clock"

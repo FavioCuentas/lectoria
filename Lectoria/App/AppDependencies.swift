@@ -117,6 +117,24 @@ public final class AppDependencies {
         }
     }
 
+    /// Si la biblioteca no contiene ninguna presentación PPTX, crea e importa automáticamente una presentación de prueba de Lectoria.
+    public func seedSamplePresentationIfNeeded() async {
+        guard let pubs = try? await publicationRepository.fetchAll() else { return }
+        let hasPPTX = pubs.contains { $0.publicationType == .pptx }
+        guard !hasPPTX else { return }
+
+        let sampleData = SamplePPTXGenerator.createSamplePPTXData()
+        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("Presentacion_Demo_Lectoria.pptx")
+
+        do {
+            try sampleData.write(to: tempURL)
+            _ = try await importService.importPublication(from: tempURL)
+            try? FileManager.default.removeItem(at: tempURL)
+        } catch {
+            print("Error al importar la presentación demo: \(error.localizedDescription)")
+        }
+    }
+
     #if DEBUG
     /// Inicializador mock/in-memory para previews de SwiftUI y pruebas rápidas.
     public static var preview: AppDependencies {
