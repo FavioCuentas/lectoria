@@ -202,8 +202,8 @@ public final class NoteExporter {
         let format = UIGraphicsPDFRendererFormat()
         format.documentInfo = pdfMetaData as [String: Any]
 
-        let pageWidth: CGFloat = 595.2 // A4 width
-        let pageHeight: CGFloat = 842.0 // A4 height
+        let pageWidth: CGFloat = 595.2
+        let pageHeight: CGFloat = 842.0
         let margin: CGFloat = 40.0
         let contentWidth = pageWidth - (margin * 2)
 
@@ -233,7 +233,6 @@ public final class NoteExporter {
                 let dateSize = dateText.size(withAttributes: attrs)
                 dateText.draw(at: CGPoint(x: pageWidth - margin - dateSize.width, y: 20), withAttributes: attrs)
 
-                // Divider line
                 let linePath = UIBezierPath()
                 linePath.move(to: CGPoint(x: margin, y: 32))
                 linePath.addLine(to: CGPoint(x: pageWidth - margin, y: 32))
@@ -246,7 +245,6 @@ public final class NoteExporter {
             drawHeader()
             currentY = 45
 
-            // Main Document Title
             let mainTitleAttr: [NSAttributedString.Key: Any] = [
                 .font: UIFont.systemFont(ofSize: 20, weight: .bold),
                 .foregroundColor: UIColor(red: 0.85, green: 0.35, blue: 0.22, alpha: 1.0)
@@ -260,7 +258,6 @@ public final class NoteExporter {
 
                 checkNewPage(neededHeight: 60)
 
-                // Pub Box / Header
                 let pubTitleAttr: [NSAttributedString.Key: Any] = [
                     .font: UIFont.systemFont(ofSize: 14, weight: .bold),
                     .foregroundColor: UIColor.label
@@ -280,7 +277,6 @@ public final class NoteExporter {
 
                 currentY += 10
 
-                // Highlights
                 for hl in item.highlights {
                     let catName = categoryDisplayName(hl.category)
                     let textAttr: [NSAttributedString.Key: Any] = [
@@ -321,7 +317,6 @@ public final class NoteExporter {
                     }
                 }
 
-                // Standalone Notes
                 let standaloneNotes = item.notes.filter { $0.highlightID == nil }
                 for note in standaloneNotes {
                     let noteAttr: [NSAttributedString.Key: Any] = [
@@ -432,21 +427,21 @@ public final class NoteExporter {
 
     private static func categoryDisplayName(_ categoryRaw: String?) -> String {
         guard let raw = categoryRaw, let cat = HighlightCategory(rawValue: raw) else {
-            return "Destacado"
+            return categoryRaw ?? "Destacado"
         }
         switch cat {
         case .mainIdea: return "Idea Principal"
-        case .secondaryIdea: return "Idea Secundaria"
+        case .evidence: return "Evidencia"
         case .quote: return "Cita Memorable"
         case .question: return "Duda / Pregunta"
-        case .actionItem: return "Acción Pendiente"
+        case .action: return "Acción Pendiente"
         case .dictionary: return "Diccionario"
         case .translation: return "Traducción"
         case .ai: return "Consulta IA"
         }
     }
 
-    private static func currentFormattedDate() -> String {
+    nonisolated private static func currentFormattedDate() -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .long
         formatter.timeStyle = .short
@@ -454,7 +449,7 @@ public final class NoteExporter {
         return formatter.string(from: Date())
     }
 
-    private static func formattedDateForFileName() -> String {
+    nonisolated private static func formattedDateForFileName() -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd_HHmmss"
         return formatter.string(from: Date())

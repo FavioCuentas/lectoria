@@ -26,6 +26,7 @@ struct NotesView: View {
     @State private var initialPDFLocation: PDFLocation? = nil
     @State private var initialTextLocation: TextLocation? = nil
     @State private var exportWrapper: ExportFileWrapper? = nil
+    @State private var editingItem: AnnotationItem? = nil
 
     enum FilterTab: String, CaseIterable, Identifiable {
         case all = "Todos"

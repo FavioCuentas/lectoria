@@ -223,11 +223,13 @@ struct EditAnnotationSheet: View {
     }
 
     private func exportSingle(format: NoteExportFormat) {
-        let dummyPub = PublicationRecord(
+        let dummyPub = PublicationRecord.newImport(
             title: "Anotación de Lectoria",
-            localFileName: "note.txt",
             publicationType: .txt,
-            fileHash: "hash"
+            localFileName: "note.txt",
+            mimeType: "text/plain",
+            fileSize: 100,
+            sha256: "dummyhash"
         )
         let hlList = highlight != nil ? [highlight!] : []
         let currentNote = note ?? Note(
