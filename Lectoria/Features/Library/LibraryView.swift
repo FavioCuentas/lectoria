@@ -8,6 +8,7 @@ import SwiftData
 struct LibraryView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppRouter.self) private var router
+    @Environment(AppDependencies.self) private var dependencies
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \PublicationModel.createdAt, order: .reverse) private var publicationModels: [PublicationModel]
