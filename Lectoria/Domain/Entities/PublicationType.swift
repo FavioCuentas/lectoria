@@ -53,7 +53,7 @@ public enum PublicationType: String, Codable, Sendable, CaseIterable, Identifiab
         case .txt: ["txt", "text"]
         case .markdown: ["md", "markdown"]
         case .pastedText: []
-        case .pptx: ["pptx"]
+        case .pptx: ["pptx", "ppt"]
         }
     }
 

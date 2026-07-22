@@ -64,7 +64,8 @@ struct RootView: View {
                 UTType(filenameExtension: "epub") ?? .data,
                 .plainText,
                 UTType(filenameExtension: "md") ?? .plainText,
-                UTType(filenameExtension: "pptx") ?? .data
+                UTType(filenameExtension: "pptx") ?? .data,
+                UTType(filenameExtension: "ppt") ?? .data
             ],
             allowsMultipleSelection: false
         ) { result in

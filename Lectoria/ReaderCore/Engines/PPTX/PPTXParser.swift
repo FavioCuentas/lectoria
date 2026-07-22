@@ -113,103 +113,111 @@ final class PPTXParser: Sendable {
         let data = try Data(contentsOf: zipURL)
         var offset = 0
 
-        while offset + 4 <= data.count {
-            // Verificar firma de Local File Header
-            let sig = data.subdata(in: offset..<(offset + 4))
-            guard sig == Data([0x50, 0x4b, 0x03, 0x04]) else {
-                break // No más archivos locales
+        while offset + 30 <= data.count {
+            // Verificar firma de Local File Header (0x04034b50 en little endian: [0x50, 0x4b, 0x03, 0x04])
+            let sig0 = data[offset]
+            let sig1 = data[offset + 1]
+            let sig2 = data[offset + 2]
+            let sig3 = data[offset + 3]
+            
+            guard sig0 == 0x50 && sig1 == 0x4b && sig2 == 0x03 && sig3 == 0x04 else {
+                break // Fin de cabezales o archivo no ZIP
             }
 
-            // Parsear el header
-            guard offset + 30 <= data.count else { break }
-
             let compressionMethod = readUInt16(data, offset: offset + 8)
-            let compressedSize = readUInt32(data, offset: offset + 18)
-            let uncompressedSize = readUInt32(data, offset: offset + 22)
-            let fileNameLength = readUInt16(data, offset: offset + 26)
-            let extraFieldLength = readUInt16(data, offset: offset + 28)
+            let compressedSize = Int(readUInt32(data, offset: offset + 18))
+            let uncompressedSize = Int(readUInt32(data, offset: offset + 22))
+            let fileNameLength = Int(readUInt16(data, offset: offset + 26))
+            let extraFieldLength = Int(readUInt16(data, offset: offset + 28))
 
             let fileNameStart = offset + 30
-            let fileNameEnd = fileNameStart + Int(fileNameLength)
+            let fileNameEnd = fileNameStart + fileNameLength
             guard fileNameEnd <= data.count else { break }
 
             let fileNameData = data.subdata(in: fileNameStart..<fileNameEnd)
             guard let fileName = String(data: fileNameData, encoding: .utf8) else {
-                offset = fileNameEnd + Int(extraFieldLength) + Int(compressedSize)
+                let nextOffset = max(fileNameEnd + extraFieldLength + compressedSize, offset + 1)
+                offset = nextOffset
                 continue
             }
 
-            let dataStart = fileNameEnd + Int(extraFieldLength)
-            let dataEnd = dataStart + Int(compressedSize)
-            guard dataEnd <= data.count else { break }
+            let dataStart = fileNameEnd + extraFieldLength
+            let dataEnd = dataStart + compressedSize
+            
+            let nextOffset = max(dataEnd, offset + 30 + fileNameLength + extraFieldLength)
+            defer { offset = nextOffset }
+
+            guard dataEnd <= data.count && dataStart <= dataEnd else { break }
 
             let fileURL = destinationURL.appendingPathComponent(fileName)
 
             if fileName.hasSuffix("/") {
-                // Es un directorio
+                // Directorio
                 try FileManager.default.createDirectory(at: fileURL, withIntermediateDirectories: true)
             } else {
-                // Crear directorios padre si no existen
                 let parentDir = fileURL.deletingLastPathComponent()
                 if !FileManager.default.fileExists(atPath: parentDir.path) {
                     try FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
                 }
 
                 if compressionMethod == 0 {
-                    // Almacenado sin compresión (STORED)
+                    // STORED
                     let fileData = data.subdata(in: dataStart..<dataEnd)
                     try fileData.write(to: fileURL)
                 } else if compressionMethod == 8 {
-                    // Deflate — usar Compression framework
+                    // DEFLATE
                     let compressedData = data.subdata(in: dataStart..<dataEnd)
-                    if let decompressed = decompressDeflate(compressedData, expectedSize: Int(uncompressedSize)) {
+                    if let decompressed = decompressDeflate(compressedData, expectedSize: uncompressedSize) {
                         try decompressed.write(to: fileURL)
                     }
                 }
-                // Otros métodos de compresión se ignoran silenciosamente
             }
-
-            offset = dataEnd
         }
     }
 
-    /// Descomprime datos con el algoritmo Deflate (raw, sin gzip header) usando el framework Compression de Apple.
+    /// Descomprime datos con el algoritmo Deflate (raw, sin gzip header) usando el framework Compression/zlib.
     private static func decompressDeflate(_ compressedData: Data, expectedSize: Int) -> Data? {
-        // Usar zlib raw inflate (wbits = -15 para raw deflate)
-        // El framework Compression de Apple usa COMPRESSION_ZLIB que espera zlib header,
-        // pero raw deflate en ZIP no tiene ese header.
-        // Usamos la API de nivel inferior de zlib.
+        guard !compressedData.isEmpty else { return Data() }
 
-        let bufferSize = max(expectedSize, 1024)
-        var decompressed = Data(count: bufferSize)
+        var stream = z_stream()
+        guard inflateInit2_(&stream, -15, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+            return nil
+        }
+        defer { inflateEnd(&stream) }
 
-        let result: Data? = compressedData.withUnsafeBytes { srcPtr in
+        var decompressed = Data()
+        let chunkCapacity = 16384
+        var chunk = Data(count: chunkCapacity)
+
+        return compressedData.withUnsafeBytes { srcPtr -> Data? in
             guard let srcBase = srcPtr.baseAddress else { return nil }
-            return decompressed.withUnsafeMutableBytes { dstPtr in
-                guard let dstBase = dstPtr.baseAddress else { return nil }
+            stream.next_in = UnsafeMutablePointer<Bytef>(mutating: srcBase.assumingMemoryBound(to: Bytef.self))
+            stream.avail_in = UInt32(compressedData.count)
 
-                var stream = z_stream()
-                stream.next_in = UnsafeMutablePointer<Bytef>(mutating: srcBase.assumingMemoryBound(to: Bytef.self))
-                stream.avail_in = UInt32(compressedData.count)
-                stream.next_out = dstBase.assumingMemoryBound(to: Bytef.self)
-                stream.avail_out = UInt32(bufferSize)
-
-                // -MAX_WBITS = raw deflate (sin zlib/gzip header)
-                guard inflateInit2_(&stream, -15, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
-                    return nil
+            while true {
+                let status = chunk.withUnsafeMutableBytes { dstPtr -> Int32 in
+                    guard let dstBase = dstPtr.baseAddress else { return Z_STREAM_ERROR }
+                    stream.next_out = dstBase.assumingMemoryBound(to: Bytef.self)
+                    stream.avail_out = UInt32(chunkCapacity)
+                    return inflate(&stream, Z_NO_FLUSH)
                 }
 
-                let status = inflate(&stream, Z_FINISH)
-                inflateEnd(&stream)
-
-                if status == Z_STREAM_END || status == Z_OK {
-                    return Data(bytes: dstBase, count: Int(stream.total_out))
+                let bytesRead = chunkCapacity - Int(stream.avail_out)
+                if bytesRead > 0 {
+                    decompressed.append(chunk.prefix(bytesRead))
                 }
-                return nil
+
+                if status == Z_STREAM_END {
+                    return decompressed
+                } else if status != Z_OK && status != Z_BUF_ERROR {
+                    return decompressed.isEmpty ? nil : decompressed
+                }
+
+                if stream.avail_in == 0 && bytesRead == 0 {
+                    return decompressed.isEmpty ? nil : decompressed
+                }
             }
         }
-
-        return result
     }
 
     // MARK: - Slide Discovery
@@ -263,15 +271,19 @@ final class PPTXParser: Sendable {
     // MARK: - Helpers
 
     private static func readUInt16(_ data: Data, offset: Int) -> UInt16 {
-        return data.withUnsafeBytes { ptr in
-            ptr.load(fromByteOffset: offset, as: UInt16.self).littleEndian
-        }
+        guard offset + 2 <= data.count else { return 0 }
+        let b0 = UInt16(data[offset])
+        let b1 = UInt16(data[offset + 1])
+        return b0 | (b1 << 8)
     }
 
     private static func readUInt32(_ data: Data, offset: Int) -> UInt32 {
-        return data.withUnsafeBytes { ptr in
-            ptr.load(fromByteOffset: offset, as: UInt32.self).littleEndian
-        }
+        guard offset + 4 <= data.count else { return 0 }
+        let b0 = UInt32(data[offset])
+        let b1 = UInt32(data[offset + 1])
+        let b2 = UInt32(data[offset + 2])
+        let b3 = UInt32(data[offset + 3])
+        return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
     }
 }
 

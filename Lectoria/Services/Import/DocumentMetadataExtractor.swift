@@ -105,25 +105,37 @@ public final class DocumentMetadataExtractor: Sendable {
         var offset = 0
         
         while offset + 30 <= data.count {
-            let sig = data.subdata(in: offset..<(offset + 4))
-            guard sig == Data([0x50, 0x4b, 0x03, 0x04]) else { break }
+            let sig0 = data[offset]
+            let sig1 = data[offset + 1]
+            let sig2 = data[offset + 2]
+            let sig3 = data[offset + 3]
             
-            let compressionMethod = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 8, as: UInt16.self).littleEndian }
-            let compressedSize = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 18, as: UInt32.self).littleEndian }
-            let uncompressedSize = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 22, as: UInt32.self).littleEndian }
-            let fileNameLength = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 26, as: UInt16.self).littleEndian }
-            let extraFieldLength = data.withUnsafeBytes { $0.load(fromByteOffset: offset + 28, as: UInt16.self).littleEndian }
+            guard sig0 == 0x50 && sig1 == 0x4b && sig2 == 0x03 && sig3 == 0x04 else { break }
+            
+            let compressionMethod = readUInt16(data, offset: offset + 8)
+            let compressedSize = Int(readUInt32(data, offset: offset + 18))
+            let uncompressedSize = Int(readUInt32(data, offset: offset + 22))
+            let fileNameLength = Int(readUInt16(data, offset: offset + 26))
+            let extraFieldLength = Int(readUInt16(data, offset: offset + 28))
             
             let fileNameStart = offset + 30
-            let fileNameEnd = fileNameStart + Int(fileNameLength)
+            let fileNameEnd = fileNameStart + fileNameLength
             guard fileNameEnd <= data.count else { break }
             
             let fileNameData = data.subdata(in: fileNameStart..<fileNameEnd)
-            let fileName = String(data: fileNameData, encoding: .utf8) ?? ""
+            guard let fileName = String(data: fileNameData, encoding: .utf8) else {
+                let nextOffset = max(fileNameEnd + extraFieldLength + compressedSize, offset + 1)
+                offset = nextOffset
+                continue
+            }
             
-            let dataStart = fileNameEnd + Int(extraFieldLength)
-            let dataEnd = dataStart + Int(compressedSize)
-            guard dataEnd <= data.count else { break }
+            let dataStart = fileNameEnd + extraFieldLength
+            let dataEnd = dataStart + compressedSize
+            
+            let nextOffset = max(dataEnd, offset + 30 + fileNameLength + extraFieldLength)
+            defer { offset = nextOffset }
+            
+            guard dataEnd <= data.count && dataStart <= dataEnd else { break }
             
             if fileName == "docProps/core.xml" {
                 let compressedData = data.subdata(in: dataStart..<dataEnd)
@@ -131,7 +143,7 @@ public final class DocumentMetadataExtractor: Sendable {
                 if compressionMethod == 0 {
                     decompressed = compressedData
                 } else if compressionMethod == 8 {
-                    decompressed = decompressDeflate(compressedData, expectedSize: Int(uncompressedSize))
+                    decompressed = decompressDeflate(compressedData, expectedSize: uncompressedSize)
                 }
                 
                 if let xmlData = decompressed {
@@ -139,41 +151,68 @@ public final class DocumentMetadataExtractor: Sendable {
                 }
                 break
             }
-            
-            offset = dataEnd
         }
         return nil
     }
 
     private func decompressDeflate(_ compressedData: Data, expectedSize: Int) -> Data? {
-        let bufferSize = max(expectedSize, 1024)
-        var decompressed = Data(count: bufferSize)
+        guard !compressedData.isEmpty else { return Data() }
 
-        let result: Data? = compressedData.withUnsafeBytes { srcPtr in
+        var stream = z_stream()
+        guard inflateInit2_(&stream, -15, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
+            return nil
+        }
+        defer { inflateEnd(&stream) }
+
+        var decompressed = Data()
+        let chunkCapacity = 16384
+        var chunk = Data(count: chunkCapacity)
+
+        return compressedData.withUnsafeBytes { srcPtr -> Data? in
             guard let srcBase = srcPtr.baseAddress else { return nil }
-            return decompressed.withUnsafeMutableBytes { dstPtr in
-                guard let dstBase = dstPtr.baseAddress else { return nil }
+            stream.next_in = UnsafeMutablePointer<Bytef>(mutating: srcBase.assumingMemoryBound(to: Bytef.self))
+            stream.avail_in = UInt32(compressedData.count)
 
-                var stream = z_stream()
-                stream.next_in = UnsafeMutablePointer<Bytef>(mutating: srcBase.assumingMemoryBound(to: Bytef.self))
-                stream.avail_in = UInt32(compressedData.count)
-                stream.next_out = dstBase.assumingMemoryBound(to: Bytef.self)
-                stream.avail_out = UInt32(bufferSize)
-
-                guard inflateInit2_(&stream, -15, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size)) == Z_OK else {
-                    return nil
+            while true {
+                let status = chunk.withUnsafeMutableBytes { dstPtr -> Int32 in
+                    guard let dstBase = dstPtr.baseAddress else { return Z_STREAM_ERROR }
+                    stream.next_out = dstBase.assumingMemoryBound(to: Bytef.self)
+                    stream.avail_out = UInt32(chunkCapacity)
+                    return inflate(&stream, Z_NO_FLUSH)
                 }
 
-                let status = inflate(&stream, Z_FINISH)
-                inflateEnd(&stream)
-
-                if status == Z_STREAM_END || status == Z_OK {
-                    return Data(bytes: dstBase, count: Int(stream.total_out))
+                let bytesRead = chunkCapacity - Int(stream.avail_out)
+                if bytesRead > 0 {
+                    decompressed.append(chunk.prefix(bytesRead))
                 }
-                return nil
+
+                if status == Z_STREAM_END {
+                    return decompressed
+                } else if status != Z_OK && status != Z_BUF_ERROR {
+                    return decompressed.isEmpty ? nil : decompressed
+                }
+
+                if stream.avail_in == 0 && bytesRead == 0 {
+                    return decompressed.isEmpty ? nil : decompressed
+                }
             }
         }
-        return result
+    }
+
+    private func readUInt16(_ data: Data, offset: Int) -> UInt16 {
+        guard offset + 2 <= data.count else { return 0 }
+        let b0 = UInt16(data[offset])
+        let b1 = UInt16(data[offset + 1])
+        return b0 | (b1 << 8)
+    }
+
+    private func readUInt32(_ data: Data, offset: Int) -> UInt32 {
+        guard offset + 4 <= data.count else { return 0 }
+        let b0 = UInt32(data[offset])
+        let b1 = UInt32(data[offset + 1])
+        let b2 = UInt32(data[offset + 2])
+        let b3 = UInt32(data[offset + 3])
+        return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
     }
 
     private func parseCoreXML(_ data: Data, defaultTitle: String) -> ExtractedMetadata {
