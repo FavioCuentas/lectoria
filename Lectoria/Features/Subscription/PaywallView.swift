@@ -3,10 +3,13 @@ import StoreKit
 
 // MARK: - PaywallView
 
-/// Vista premium y honesta para la suscripción de Lectoria.
+/// Vista comercial y honesta para la suscripción y planes de Lectoria.
 ///
-/// Muestra los beneficios del plan Premium, carga y muestra los precios localizados
-/// directamente desde StoreKit 2 y permite comprar o restaurar compras.
+/// Soporta los 4 niveles de acceso requeridos por la especificación:
+/// - `free`: Plan gratuito con límites.
+/// - `premium_annual`: Suscripción anual (~USD 5/año).
+/// - `premium_lifetime`: Licencia de por vida (~USD 20 pago único).
+/// - `institutional`: Acceso ilimitado patrocinado por universidades/escuelas.
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ThemeManager.self) private var themeManager
@@ -17,6 +20,7 @@ struct PaywallView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showErrorAlert = false
+    @State private var showInstitutionalAuth = false
 
     var body: some View {
         let theme = themeManager.currentTheme
@@ -27,19 +31,22 @@ struct PaywallView: View {
                     // Encabezado con gradiente premium
                     headerView(theme: theme)
 
-                    // Beneficios Premium
+                    // Beneficios de los Planes Premium & Institucionales
                     benefitsSection(theme: theme)
 
-                    // Sección de compra (Precios de StoreKit)
+                    // Sección de compra (Precios reales de StoreKit 2)
                     if isLoading && products.isEmpty {
                         ProgressView()
                             .padding(.vertical, AppSpacing.xl)
                     } else if !products.isEmpty {
                         pricingSection(theme: theme)
                     } else {
-                        // Si no hay productos de StoreKit (por ejemplo, en simulador sin configuración)
+                        // Precios de referencia oficiales (Simulador / Fallback)
                         fallbackPricingSection(theme: theme)
                     }
+
+                    // Enlace a Acceso Institucional
+                    institutionalLinkSection(theme: theme)
 
                     // Enlaces legales y restauración
                     legalSection(theme: theme)
@@ -58,6 +65,11 @@ struct PaywallView: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $showInstitutionalAuth) {
+                InstitutionalAuthView {
+                    dismiss()
+                }
+            }
             .task {
                 await loadStoreKitProducts()
             }
@@ -79,7 +91,7 @@ struct PaywallView: View {
     private func headerView(theme: AppTheme) -> some View {
         VStack(spacing: AppSpacing.sm) {
             Image(systemName: "crown.fill")
-                .font(.system(size: 48))
+                .font(.system(size: 44))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [AppColor.accent(for: theme), Color.orange],
@@ -93,7 +105,7 @@ struct PaywallView: View {
                 .font(.system(size: 28, weight: .bold, design: .serif))
                 .foregroundStyle(AppColor.textPrimary(for: theme))
 
-            Text("Lleva tu lectura y estudio académico al siguiente nivel.",
+            Text("Elige el plan ideal para tu lectura y estudio académico.",
                  comment: "Paywall: subtitle description")
                 .font(AppTypography.subtitle)
                 .foregroundStyle(AppColor.textSecondary(for: theme))
@@ -109,28 +121,28 @@ struct PaywallView: View {
             benefitRow(
                 icon: "doc.badge.plus",
                 title: "Documentos Ilimitados",
-                desc: "Importa tantos archivos EPUB, PDF, TXT y Markdown como necesites.",
+                desc: "Importa archivos EPUB, PDF, PPTX, TXT y Markdown sin cuota de biblioteca.",
                 theme: theme
             )
 
             benefitRow(
                 icon: "pencil.and.outline",
                 title: "Destacados y Notas Ilimitadas",
-                desc: "Subraya sin restricciones utilizando tus categorías de estudio personalizadas.",
+                desc: "Organiza tus lecturas por categorías de estudio académicas sin restricciones.",
                 theme: theme
             )
 
             benefitRow(
-                icon: "sparkles",
-                title: "Funciones de IA Avanzadas",
-                desc: "Resume capítulos completos, traduce párrafos y obtén explicaciones inteligentes sin cuota gratuita.",
+                icon: "brain.head.profile",
+                title: "IA 100% Local en Dispositivo",
+                desc: "Explicaciones, resúmenes y traducción procesados exclusivamente en tu iPhone sin servidores externos.",
                 theme: theme
             )
 
             benefitRow(
-                icon: "cloud.sun.fill",
-                title: "Sincronización en la Nube",
-                desc: "Respalda tus anotaciones y posición de lectura en todos tus dispositivos.",
+                icon: "arrow.triangle.2.circlepath",
+                title: "Sincronización Offline-First",
+                desc: "Respaldo automático de tu progreso y anotaciones en todos tus dispositivos.",
                 theme: theme
             )
         }
@@ -158,12 +170,13 @@ struct PaywallView: View {
         }
     }
 
-    // MARK: - Pricing Section
+    // MARK: - Pricing Section (StoreKit 2)
 
     private func pricingSection(theme: AppTheme) -> some View {
         VStack(spacing: AppSpacing.md) {
             ForEach(products) { product in
                 let isSelected = selectedProduct?.id == product.id
+                let isLifetime = product.id.contains("lifetime")
                 let isYearly = product.id.contains("yearly")
 
                 Button {
@@ -176,8 +189,16 @@ struct PaywallView: View {
                                     .font(AppTypography.bodyBold)
                                     .foregroundStyle(AppColor.textPrimary(for: theme))
 
-                                if isYearly {
-                                    Text("Ahorra 33%")
+                                if isLifetime {
+                                    Text("Pago único")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, AppSpacing.xs)
+                                        .padding(.vertical, 2)
+                                        .background(AppColor.accent(for: theme))
+                                        .clipShape(Capsule())
+                                } else if isYearly {
+                                    Text("Mejor Valor (~$5/año)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, AppSpacing.xs)
@@ -218,42 +239,64 @@ struct PaywallView: View {
 
     private func fallbackPricingSection(theme: AppTheme) -> some View {
         VStack(spacing: AppSpacing.md) {
-            Text("No se pudieron cargar los productos de la tienda. Usando precios de referencia:",
-                 comment: "Paywall: store error info")
-                .font(AppTypography.caption)
-                .foregroundStyle(AppColor.error(for: theme))
-                .multilineTextAlignment(.center)
-
-            // Simulación visual
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            // Opción 1: Premium Anual (~USD 5/año)
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 HStack {
-                    Text("Premium Mensual")
-                        .font(AppTypography.body)
-                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: AppSpacing.xs) {
+                            Text("Premium Anual")
+                                .font(AppTypography.bodyBold)
+                                .foregroundStyle(AppColor.textPrimary(for: theme))
+
+                            Text("Popular (~$5/año)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, AppSpacing.xs)
+                                .padding(.vertical, 2)
+                                .background(Color.orange)
+                                .clipShape(Capsule())
+                        }
+                        Text("Acceso ilimitado por 12 meses")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                    }
                     Spacer()
-                    Text("$4.99 / mes")
-                        .font(AppTypography.body)
-                        .fontWeight(.bold)
+                    Text("USD $4.99 / año")
+                        .font(AppTypography.bodyBold)
                         .foregroundStyle(AppColor.textPrimary(for: theme))
                 }
-                Divider()
+            }
+            .padding(AppSpacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: AppRadius.sm)
+                    .stroke(AppColor.accent(for: theme), lineWidth: 2)
+            )
+            .background(AppColor.surface(for: theme))
+
+            // Opción 2: Premium de por vida (~USD 20)
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 HStack {
-                    HStack {
-                        Text("Premium Anual")
-                        Text("Ahorra 33%")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, AppSpacing.xs)
-                            .padding(.vertical, 2)
-                            .background(Color.orange)
-                            .clipShape(Capsule())
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: AppSpacing.xs) {
+                            Text("Premium De por Vida")
+                                .font(AppTypography.bodyBold)
+                                .foregroundStyle(AppColor.textPrimary(for: theme))
+
+                            Text("Pago único")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, AppSpacing.xs)
+                                .padding(.vertical, 2)
+                                .background(AppColor.accent(for: theme))
+                                .clipShape(Capsule())
+                        }
+                        Text("Licencia permanente sin renovaciones")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
                     }
-                    .font(AppTypography.body)
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
                     Spacer()
-                    Text("$39.99 / año")
-                        .font(AppTypography.body)
-                        .fontWeight(.bold)
+                    Text("USD $19.99")
+                        .font(AppTypography.bodyBold)
                         .foregroundStyle(AppColor.textPrimary(for: theme))
                 }
             }
@@ -264,13 +307,45 @@ struct PaywallView: View {
             Button(String(localized: "Simular suscripción Premium", comment: "Paywall: simulate action")) {
                 simulatePremiumPurchase()
             }
-            .font(AppTypography.body)
-            .fontWeight(.bold)
+            .font(AppTypography.bodyBold)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 48)
             .background(AppColor.accent(for: theme))
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+        }
+    }
+
+    private func institutionalLinkSection(theme: AppTheme) -> some View {
+        Button {
+            showInstitutionalAuth = true
+        } label: {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "building.columns.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AppColor.accent(for: theme))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("¿Perteneces a una institución educativa?")
+                        .font(AppTypography.caption.weight(.bold))
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                    Text("Accede gratis con tu correo o código institucional", comment: "Institutional link subtitle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                }
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AppColor.textTertiary(for: theme))
+            }
+            .padding(AppSpacing.md)
+            .background(AppColor.surface(for: theme))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.sm)
+                    .strokeBorder(AppColor.accent(for: theme).opacity(0.3), lineWidth: 1)
+            )
         }
     }
 
@@ -285,8 +360,7 @@ struct PaywallView: View {
                     .tint(.white)
             } else {
                 Text(String(localized: "Suscribirse ahora", comment: "Paywall: subscribe button"))
-                    .font(AppTypography.body)
-                    .fontWeight(.bold)
+                    .font(AppTypography.bodyBold)
                     .foregroundStyle(.white)
             }
         }
@@ -305,10 +379,10 @@ struct PaywallView: View {
             Button(String(localized: "Restaurar compras", comment: "Paywall: restore action")) {
                 performRestore()
             }
-            .font(AppTypography.caption)
+            .font(AppTypography.caption.weight(.semibold))
             .foregroundStyle(AppColor.accent(for: theme))
 
-            Text("Suscripción auto-renovable. El cobro se realizará a tu cuenta de Apple al confirmar la compra. Se renovará automáticamente salvo que la canceles al menos 24 horas antes del fin del período activo.",
+            Text("Suscripción auto-renovable (o pago único). El cobro se realizará a tu cuenta de Apple ID al confirmar la compra. Puedes administrar o cancelar tus suscripciones desde los ajustes de tu cuenta de App Store.",
                  comment: "Paywall: subscription disclosure")
                 .font(.system(size: 10))
                 .foregroundStyle(AppColor.textTertiary(for: theme))
@@ -391,11 +465,10 @@ struct PaywallView: View {
     private func simulatePremiumPurchase() {
         isLoading = true
         Task {
-            // Simular usando el MockSubscriptionService
             if let mock = dependencies.subscriptionService as? MockSubscriptionService {
                 mock.hasActiveSubscription = true
                 mock.activeEntitlement = SubscriptionEntitlement(
-                    productID: "com.lectoria.premium.monthly",
+                    productID: "com.lectoria.premium.yearly",
                     status: "active"
                 )
             }
