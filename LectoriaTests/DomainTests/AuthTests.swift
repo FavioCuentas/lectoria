@@ -36,7 +36,7 @@ struct AuthTests {
         #expect(user != nil)
         #expect(user?.email == "test@lectoria.app")
         #expect(user?.fullName == "Juan Pérez")
-        #expect(dependencies.authService.sessionToken == "mock_session_token_xyz")
+        #expect(dependencies.authService.sessionToken == "mock_session_token_apple")
 
         // 2. Cerrar sesión
         try await dependencies.authService.signOut()
