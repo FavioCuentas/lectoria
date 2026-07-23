@@ -135,20 +135,37 @@ struct HomeView: View {
                     selectedPublication = publication
                 } label: {
                     HStack(spacing: AppSpacing.md) {
-                        // Portada minimalista
+                        // Portada física del libro (primera página)
                         ZStack(alignment: .topTrailing) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: AppRadius.xs)
-                                    .fill(AppColor.surfaceSecondary(for: theme))
-                                    .overlay(
+                            Group {
+                                if let coverPath = publication.coverPath,
+                                   !coverPath.isEmpty,
+                                   let uiImage = UIImage(contentsOfFile: CoverGenerator().coversDirectory.appendingPathComponent(coverPath).path) {
+                                    Image(uiImage: uiImage)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                        .clipped()
+                                } else {
+                                    ZStack {
                                         RoundedRectangle(cornerRadius: AppRadius.xs)
-                                            .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
-                                    )
-                                
-                                Image(systemName: publication.publicationType.systemImage)
-                                    .font(.title3)
-                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                                            .fill(AppColor.surfaceSecondary(for: theme))
+                                            .overlay(
+                                                RoundedRectangle(cornerRadius: AppRadius.xs)
+                                                    .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
+                                            )
+                                        
+                                        Image(systemName: publication.publicationType.systemImage)
+                                            .font(.title3)
+                                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                                    }
+                                }
                             }
+                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.xs))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppRadius.xs)
+                                    .strokeBorder(AppColor.border(for: theme).opacity(0.4), lineWidth: 1)
+                            )
                             
                             if publication.isPinned {
                                 Image(systemName: "pin.fill")

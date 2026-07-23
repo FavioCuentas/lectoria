@@ -179,40 +179,38 @@ struct PublicationCard: View {
 
     // MARK: - Cover
 
+    // MARK: - Cover
+
+    private var coverImageURL: URL? {
+        guard let path = publication.coverPath, !path.isEmpty else { return nil }
+        let coversDir = CoverGenerator().coversDirectory
+        let url = coversDir.appendingPathComponent(path)
+        if FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        return nil
+    }
+
     private var coverView: some View {
         let theme = themeManager.currentTheme
         return ZStack(alignment: .topTrailing) {
-            ZStack {
-                RoundedRectangle(cornerRadius: AppRadius.xs)
-                    .fill(AppColor.surface(for: theme))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppRadius.xs)
-                            .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
-                    )
-
-                VStack(spacing: AppSpacing.sm) {
-                    Spacer()
-                    
-                    Image(systemName: publication.publicationType.systemImage)
-                        .font(.body)
-                        .foregroundStyle(AppColor.textSecondary(for: theme))
-
-                    Text(publication.title)
-                        .font(.system(size: 11, weight: .bold, design: .serif))
-                        .foregroundStyle(AppColor.textPrimary(for: theme))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                        .padding(.horizontal, AppSpacing.xs)
-
-                    Spacer()
-                    
-                    Text(publication.publicationType.displayName.uppercased())
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundStyle(AppColor.textTertiary(for: theme))
-                        .padding(.bottom, AppSpacing.sm)
+            Group {
+                if let url = coverImageURL, let uiImage = UIImage(contentsOfFile: url.path) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+                } else {
+                    placeholderCover(theme: theme)
                 }
             }
-            
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.xs))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.xs)
+                    .strokeBorder(AppColor.border(for: theme).opacity(0.4), lineWidth: 1)
+            )
+
             if publication.isPinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 10, weight: .bold))
@@ -221,8 +219,45 @@ struct PublicationCard: View {
                     .background(AppColor.accent(for: theme))
                     .clipShape(Circle())
                     .padding(AppSpacing.xs)
-                    .shadow(color: Color.black.opacity(0.15), radius: 2, x: 0, y: 1)
+                    .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
             }
+        }
+    }
+
+    private func placeholderCover(theme: AppTheme) -> some View {
+        ZStack {
+            // Fondo estilo papel / e-reader
+            Color(uiColor: UIColor(red: 0.965, green: 0.957, blue: 0.941, alpha: 1.0))
+
+            VStack(spacing: AppSpacing.xs) {
+                Spacer()
+
+                Image(systemName: publication.publicationType.systemImage)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(AppColor.accent(for: theme))
+
+                Text(publication.title)
+                    .font(.system(size: 11, weight: .bold, design: .serif))
+                    .foregroundStyle(Color(uiColor: UIColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0)))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .padding(.horizontal, AppSpacing.xs)
+
+                if let author = publication.author, !author.isEmpty {
+                    Text(author)
+                        .font(.system(size: 9, weight: .regular, design: .serif))
+                        .foregroundStyle(Color.gray)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Text(publication.publicationType.displayName.uppercased())
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(AppColor.accent(for: theme).opacity(0.8))
+                    .padding(.bottom, AppSpacing.xs)
+            }
+            .padding(AppSpacing.xs)
         }
     }
 

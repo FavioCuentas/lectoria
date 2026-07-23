@@ -133,6 +133,31 @@ public final class AppDependencies {
         } catch {
             print("Error al importar la presentación demo: \(error.localizedDescription)")
         }
+
+        await ensureCoversExistIfNeeded()
+    }
+
+    /// Asegura que todas las publicaciones tengan una miniatura/portada válida de 1ª página en disco.
+    public func ensureCoversExistIfNeeded() async {
+        guard let pubs = try? await publicationRepository.fetchAll() else { return }
+        let coverGen = CoverGenerator()
+
+        for pub in pubs {
+            let coverURL: URL? = pub.coverPath != nil ? coverGen.coversDirectory.appendingPathComponent(pub.coverPath!) : nil
+            let fileExists = coverURL != nil && FileManager.default.fileExists(atPath: coverURL!.path)
+
+            if !fileExists {
+                let docURL = fileStorageService.publicationsDirectory.appendingPathComponent(pub.localFileName)
+                if FileManager.default.fileExists(atPath: docURL.path) {
+                    let metadata = ExtractedMetadata(title: pub.title, author: pub.author)
+                    if let newCoverPath = try? coverGen.generateCover(for: docURL, type: pub.publicationType, sha256: pub.sha256, metadata: metadata) {
+                        var updated = pub
+                        updated.coverPath = newCoverPath
+                        try? await publicationRepository.save(updated)
+                    }
+                }
+            }
+        }
     }
 
     #if DEBUG

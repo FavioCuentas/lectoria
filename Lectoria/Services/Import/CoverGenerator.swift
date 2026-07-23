@@ -78,7 +78,7 @@ public final class CoverGenerator: @unchecked Sendable {
         case .pdf:
             try generatePDFCover(from: url, to: destinationURL)
         case .epub, .txt, .markdown, .pastedText:
-            try generateTextBasedCover(title: metadata.title, author: metadata.author, to: destinationURL)
+            try generateTextBasedCover(from: url, title: metadata.title, author: metadata.author, to: destinationURL)
         case .pptx:
             try generatePresentationCover(title: metadata.title, author: metadata.author, to: destinationURL)
         }
@@ -116,61 +116,134 @@ public final class CoverGenerator: @unchecked Sendable {
         }
     }
 
-    /// Dibuja dinámicamente una portada minimalista tipo e-reader para libros electrónicos y texto plano.
+    /// Dibuja dinámicamente una portada basada en el contenido real de la primera página del documento (con imagen o texto).
     @MainActor
-    private func generateTextBasedCover(title: String, author: String?, to destinationURL: URL) throws {
+    private func generateTextBasedCover(
+        from sourceURL: URL,
+        title: String,
+        author: String?,
+        to destinationURL: URL
+    ) throws {
+        // Intentar leer el texto inicial de la primera página del documento
+        let rawContent = (try? String(contentsOf: sourceURL, encoding: .utf8)) ??
+                         (try? String(contentsOf: sourceURL, encoding: .ascii)) ?? ""
+
+        // Limpiar el texto omitiendo líneas de encabezados repetidas (# Título)
+        let lines = rawContent.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !String($0).hasPrefix("#") && !$0.isEmpty }
+
+        let previewText = lines.prefix(12).joined(separator: "\n\n")
+
+        // Buscar si hay una imagen local en markdown o ruta
+        var inlineImage: UIImage? = nil
+        if let match = rawContent.range(of: #"!\[.*?\]\((.*?)\)"#, options: .regularExpression) {
+            let imagePath = String(rawContent[match])
+                .components(separatedBy: "(").last?
+                .replacingOccurrences(of: ")", with: "") ?? ""
+            let imgURL = sourceURL.deletingLastPathComponent().appendingPathComponent(imagePath)
+            if FileManager.default.fileExists(atPath: imgURL.path) {
+                inlineImage = UIImage(contentsOfFile: imgURL.path)
+            }
+        }
+
         let size = CGSize(width: 240, height: 320)
         let renderer = UIGraphicsImageRenderer(size: size)
 
         let image = renderer.image { ctx in
-            // Fondo crema minimalista
+            // Fondo crema estilo e-reader / página de libro premium
             let rect = CGRect(origin: .zero, size: size)
             let creamColor = UIColor(red: 0.965, green: 0.957, blue: 0.941, alpha: 1.0)
             creamColor.setFill()
             ctx.fill(rect)
 
-            // Borde interno sutil
-            let borderRect = rect.insetBy(dx: 12, dy: 12)
-            let borderPath = UIBezierPath(rect: borderRect)
-            UIColor.gray.withAlphaComponent(0.2).setStroke()
+            // Borde interno sutil (margen de página)
+            let borderRect = rect.insetBy(dx: 10, dy: 10)
+            let borderPath = UIBezierPath(roundedRect: borderRect, cornerRadius: 4)
+            UIColor.gray.withAlphaComponent(0.18).setStroke()
             borderPath.lineWidth = 1.0
             borderPath.stroke()
 
-            // Estilos del párrafo
             let paragraphStyle = NSMutableParagraphStyle()
             paragraphStyle.alignment = .center
 
-            // Título principal en Georgia (Serif)
-            let titleFont = UIFont(name: "Georgia-Bold", size: 16) ?? UIFont.systemFont(ofSize: 16, weight: .bold)
+            // 1. Título principal
+            let titleFont = UIFont(name: "Georgia-Bold", size: 14) ?? UIFont.systemFont(ofSize: 14, weight: .bold)
             let titleAttrs: [NSAttributedString.Key: Any] = [
                 .font: titleFont,
                 .foregroundColor: UIColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1.0),
                 .paragraphStyle: paragraphStyle
             ]
 
-            let titleRect = CGRect(x: 24, y: 70, width: 192, height: 130)
+            let titleRect = CGRect(x: 18, y: 22, width: 204, height: 42)
             title.draw(in: titleRect, withAttributes: titleAttrs)
 
-            // Autor en Georgia (Serif, itálica)
+            // 2. Autor (si existe)
+            var currentY: CGFloat = 66
             if let author = author, !author.isEmpty {
-                let authorFont = UIFont(name: "Georgia-Italic", size: 12) ?? UIFont.systemFont(ofSize: 12)
+                let authorFont = UIFont(name: "Georgia-Italic", size: 11) ?? UIFont.systemFont(ofSize: 11)
                 let authorAttrs: [NSAttributedString.Key: Any] = [
                     .font: authorFont,
-                    .foregroundColor: UIColor.gray,
+                    .foregroundColor: UIColor.darkGray,
                     .paragraphStyle: paragraphStyle
                 ]
-                let authorRect = CGRect(x: 24, y: 210, width: 192, height: 50)
+                let authorRect = CGRect(x: 18, y: currentY, width: 204, height: 18)
                 author.draw(in: authorRect, withAttributes: authorAttrs)
+                currentY += 22
             }
-            
-            // Marca de agua o logo sutil Lectoria al fondo
-            let logoFont = UIFont.systemFont(ofSize: 9, weight: .semibold)
+
+            // Separador horizontal sutil
+            let separatorPath = UIBezierPath()
+            separatorPath.move(to: CGPoint(x: 40, y: currentY))
+            separatorPath.addLine(to: CGPoint(x: 200, y: currentY))
+            UIColor.lightGray.withAlphaComponent(0.4).setStroke()
+            separatorPath.lineWidth = 0.5
+            separatorPath.stroke()
+            currentY += 10
+
+            // 3. Dibujar Imagen de la primera página (si existe) o Extracto de Texto
+            if let img = inlineImage {
+                let imgRect = CGRect(x: 24, y: currentY, width: 192, height: 140)
+                img.draw(in: imgRect)
+            } else if !previewText.isEmpty {
+                let bodyParagraphStyle = NSMutableParagraphStyle()
+                bodyParagraphStyle.alignment = .left
+                bodyParagraphStyle.lineSpacing = 3
+                bodyParagraphStyle.lineBreakMode = .byTruncatingTail
+
+                let bodyFont = UIFont(name: "Georgia", size: 10) ?? UIFont.systemFont(ofSize: 10)
+                let bodyAttrs: [NSAttributedString.Key: Any] = [
+                    .font: bodyFont,
+                    .foregroundColor: UIColor(red: 0.25, green: 0.25, blue: 0.25, alpha: 1.0),
+                    .paragraphStyle: bodyParagraphStyle
+                ]
+
+                let availableHeight = 280 - currentY
+                let bodyRect = CGRect(x: 20, y: currentY, width: 200, height: availableHeight)
+                previewText.draw(in: bodyRect, withAttributes: bodyAttrs)
+            } else {
+                // Si no hay texto extraído (ej. EPUB o binario), mostrar diseño elegante de primera página
+                let bodyParagraphStyle = NSMutableParagraphStyle()
+                bodyParagraphStyle.alignment = .center
+
+                let bodyFont = UIFont(name: "Georgia-Italic", size: 11) ?? UIFont.systemFont(ofSize: 11)
+                let bodyAttrs: [NSAttributedString.Key: Any] = [
+                    .font: bodyFont,
+                    .foregroundColor: UIColor.gray,
+                    .paragraphStyle: bodyParagraphStyle
+                ]
+                let placeholderRect = CGRect(x: 20, y: currentY + 40, width: 200, height: 60)
+                "Primera página del documento".draw(in: placeholderRect, withAttributes: bodyAttrs)
+            }
+
+            // Marca Lectoria al pie
+            let logoFont = UIFont.systemFont(ofSize: 8, weight: .semibold)
             let logoAttrs: [NSAttributedString.Key: Any] = [
                 .font: logoFont,
                 .foregroundColor: UIColor.lightGray.withAlphaComponent(0.6),
                 .paragraphStyle: paragraphStyle
             ]
-            let logoRect = CGRect(x: 24, y: 280, width: 192, height: 20)
+            let logoRect = CGRect(x: 24, y: 295, width: 192, height: 15)
             "LECTORIA".draw(in: logoRect, withAttributes: logoAttrs)
         }
 
