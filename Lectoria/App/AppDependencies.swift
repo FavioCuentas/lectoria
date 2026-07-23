@@ -143,18 +143,19 @@ public final class AppDependencies {
         let coverGen = CoverGenerator()
 
         for pub in pubs {
-            let coverURL: URL? = pub.coverPath != nil ? coverGen.coversDirectory.appendingPathComponent(pub.coverPath!) : nil
-            let fileExists = coverURL != nil && FileManager.default.fileExists(atPath: coverURL!.path)
-
-            if !fileExists {
-                let docURL = fileStorageService.publicationsDirectory.appendingPathComponent(pub.localFileName)
-                if FileManager.default.fileExists(atPath: docURL.path) {
-                    let metadata = ExtractedMetadata(title: pub.title, author: pub.author)
-                    if let newCoverPath = try? coverGen.generateCover(for: docURL, type: pub.publicationType, sha256: pub.sha256, metadata: metadata) {
-                        var updated = pub
-                        updated.coverPath = newCoverPath
-                        try? await publicationRepository.save(updated)
-                    }
+            let docURL = fileStorageService.publicationsDirectory.appendingPathComponent(pub.localFileName)
+            if FileManager.default.fileExists(atPath: docURL.path) {
+                let metadata = ExtractedMetadata(title: pub.title, author: pub.author)
+                if let newCoverPath = try? coverGen.generateCover(
+                    for: docURL,
+                    type: pub.publicationType,
+                    sha256: pub.sha256,
+                    metadata: metadata,
+                    force: true
+                ) {
+                    var updated = pub
+                    updated.coverPath = newCoverPath
+                    try? await publicationRepository.save(updated)
                 }
             }
         }

@@ -56,21 +56,23 @@ public final class CoverGenerator: @unchecked Sendable {
     ///   - type: Tipo de publicación.
     ///   - sha256: Hash único del archivo (se usará como nombre de la portada).
     ///   - metadata: Metadatos extraídos (para dibujar portadas de texto).
+    ///   - force: Si es `true`, reemplaza la portada en disco si ya existía.
     /// - Returns: Ruta de acceso local al archivo de portada creado, o `nil` si no aplica.
     @MainActor
     public func generateCover(
         for url: URL,
         type: PublicationType,
         sha256: String,
-        metadata: ExtractedMetadata
+        metadata: ExtractedMetadata,
+        force: Bool = false
     ) throws -> String {
         try ensureCoversDirectoryExists()
         
         let coverFileName = "\(sha256).jpg"
         let destinationURL = coversDirectory.appendingPathComponent(coverFileName)
 
-        // Si ya existe la portada, regresamos la ruta relativa directamente
-        if fileManager.fileExists(atPath: destinationURL.path) {
+        // Si ya existe la portada y no es forzada, regresamos la ruta relativa directamente
+        if !force && fileManager.fileExists(atPath: destinationURL.path) {
             return coverFileName
         }
 
