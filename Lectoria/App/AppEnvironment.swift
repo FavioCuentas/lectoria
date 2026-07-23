@@ -37,19 +37,11 @@ struct AppEnvironment: Sendable {
     // MARK: - URLs base (configuradas remotamente en fases posteriores)
 
     var supabaseURL: String {
-        switch buildEnvironment {
-        case .development: "https://dev.supabase.lectoria.app"
-        case .staging: "https://staging.supabase.lectoria.app"
-        case .production: "https://api.lectoria.app"
-        }
+        "https://qikgjqbqjlgoeuxtujiy.supabase.co"
     }
 
     var supabaseAnonKey: String {
-        switch buildEnvironment {
-        case .development: "fake_dev_anon_key"
-        case .staging: "fake_staging_anon_key"
-        case .production: "fake_prod_anon_key"
-        }
+        "sb_publishable_ZUpU9pGayBxUnZmWjfsh6Q_jCZKQYFV"
     }
 
     // MARK: - Feature flags (valores por defecto, actualizables remotamente)
