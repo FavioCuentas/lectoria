@@ -26,7 +26,14 @@ public final class DefaultFeatureEntitlementService: FeatureEntitlementService, 
         self.aiUsageRepository = aiUsageRepository
         self.subscriptionService = subscriptionService
     }
-    
+
+    public func currentPlan() async -> PlanType {
+        if subscriptionService.hasActiveSubscription {
+            return .premiumAnnual
+        }
+        return .free
+    }
+
     public func getLimits() async -> PlanLimits {
         let hasPremium = subscriptionService.hasActiveSubscription
         

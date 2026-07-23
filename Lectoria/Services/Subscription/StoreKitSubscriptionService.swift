@@ -18,7 +18,8 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
     
     private let productIDs = [
         "com.lectoria.premium.monthly",
-        "com.lectoria.premium.yearly"
+        "com.lectoria.premium.yearly",
+        "com.lectoria.premium.lifetime"
     ]
     
     public init(repository: any SubscriptionRepository) {

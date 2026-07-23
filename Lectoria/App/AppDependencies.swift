@@ -72,12 +72,13 @@ public final class AppDependencies {
         }
         self.subscriptionService = subService
         
-        let entitlement = DefaultFeatureEntitlementService(
+        let entitlement = EntitlementManager(
             publicationRepository: pubRepo,
             highlightRepository: highlightRepo,
             noteRepository: noteRepo,
             aiUsageRepository: aiRepo,
-            subscriptionService: subService
+            subscriptionService: subService,
+            authService: self.authService
         )
         self.entitlementService = entitlement
 
@@ -92,8 +93,11 @@ public final class AppDependencies {
         self.syncService = syncService ?? SupabaseSyncService(container: modelContainer, authService: self.authService, supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
     }
 
-    /// Migra todas las publicaciones locales y consumos de IA huérfanos (de invitado) al nuevo ID de usuario.
+    /// Migra idempotentemente todas las publicaciones locales, anotaciones, progresos y consumos de IA de invitado al nuevo ID de usuario registrado.
     public func migrateGuestData(to userID: String) async {
+        guard !userID.isEmpty else { return }
+
+        // 1. Migrar publicaciones huérfanas de invitado
         if let pubs = try? await publicationRepository.fetchAll() {
             for var pub in pubs {
                 if pub.ownerID == nil {
@@ -103,6 +107,7 @@ public final class AppDependencies {
             }
         }
 
+        // 2. Migrar consumos de IA huérfanos
         if let usages = try? await aiUsageRepository.fetchAll() {
             for var usage in usages {
                 if usage.userID == nil {
