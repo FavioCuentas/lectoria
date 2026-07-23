@@ -87,11 +87,7 @@ public final class AppDependencies {
             entitlementService: entitlement
         )
         
-        if isFakeConfig {
-            self.aiService = aiService ?? MockAIService(hasConsentedToAI: true)
-        } else {
-            self.aiService = aiService ?? SupabaseAIService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
-        }
+        self.aiService = aiService ?? LocalDeviceAIService()
         
         self.syncService = syncService ?? SupabaseSyncService(container: modelContainer, authService: self.authService, supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
     }
