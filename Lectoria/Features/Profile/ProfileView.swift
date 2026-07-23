@@ -18,6 +18,7 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var showErrorAlert = false
     @State private var showPaywall = false
+    @State private var showAuthMainView = false
     @State private var errorMessage: String? = nil
 
     var body: some View {
@@ -66,24 +67,30 @@ struct ProfileView: View {
                         }
                     } else {
                         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                            Text("Inicia sesión para sincronizar tus libros y anotaciones en la nube de forma segura.",
+                            Text("Inicia sesión o accede con tu institución para sincronizar tus libros y anotaciones en la nube de forma segura.",
                                  comment: "Profile: login prompt explanation")
                                 .font(AppTypography.caption)
                                 .foregroundStyle(AppColor.textSecondary(for: theme))
                                 .padding(.bottom, AppSpacing.xs)
 
-                            SignInWithAppleButton(
-                                .signIn,
-                                onRequest: { request in
-                                    request.requestedScopes = [.email, .fullName]
-                                },
-                                onCompletion: { result in
-                                    handleAppleSignIn(result: result)
+                            Button {
+                                showAuthMainView = true
+                            } label: {
+                                HStack(spacing: AppSpacing.sm) {
+                                    Image(systemName: "building.columns.fill")
+                                        .font(.system(size: 16, weight: .bold))
+                                    Text("Iniciar sesión / Acceso Institucional")
+                                        .font(AppTypography.bodyBold)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 14, weight: .bold))
                                 }
-                            )
-                            .signInWithAppleButtonStyle(theme == .dark ? .white : .black)
-                            .frame(height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, AppSpacing.md)
+                                .frame(height: 48)
+                                .background(AppColor.accent(for: theme))
+                                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                            }
                         }
                         .padding(.vertical, AppSpacing.md)
                     }
@@ -233,6 +240,16 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
+        }
+        .sheet(isPresented: $showAuthMainView) {
+            AuthMainView(
+                onContinueAsGuest: {
+                    showAuthMainView = false
+                },
+                onAuthSuccess: {
+                    showAuthMainView = false
+                }
+            )
         }
     }
 
