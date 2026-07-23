@@ -8,32 +8,64 @@ import Observation
 public final class MockAuthService: AuthService, @unchecked Sendable {
     public var currentUser: UserProfile? = nil
     public var sessionToken: String? = nil
-    
+
     public var shouldFail = false
-    
+
     public init(currentUser: UserProfile? = nil, sessionToken: String? = nil) {
         self.currentUser = currentUser
         self.sessionToken = sessionToken
     }
-    
-    public func signInWithApple(identityToken: String, email: String?, fullName: String?) async throws {
+
+    public func signInWithApple(identityToken: String, rawNonce: String?, email: String?, fullName: String?) async throws {
         if shouldFail {
-            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado de autenticación"])
+            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado de autenticación con Apple"])
         }
-        
+
         currentUser = UserProfile(
-            id: "mock_user_123",
-            email: email ?? "mock@lectoria.app",
-            fullName: fullName ?? "Usuario de Prueba"
+            id: "mock_user_apple_123",
+            email: email ?? "apple_user@lectoria.app",
+            fullName: fullName ?? "Usuario de Apple"
         )
-        sessionToken = "mock_session_token_xyz"
+        sessionToken = "mock_session_token_apple"
     }
-    
+
+    public func signInWithGoogle(idToken: String, accessToken: String?) async throws {
+        if shouldFail {
+            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado de autenticación con Google"])
+        }
+
+        currentUser = UserProfile(
+            id: "mock_user_google_456",
+            email: "google_user@lectoria.app",
+            fullName: "Usuario de Google"
+        )
+        sessionToken = "mock_session_token_google"
+    }
+
+    public func sendOTPCode(to email: String) async throws {
+        if shouldFail {
+            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado al enviar código OTP"])
+        }
+    }
+
+    public func verifyOTPCode(email: String, code: String) async throws {
+        if shouldFail {
+            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Código OTP inválido"])
+        }
+
+        currentUser = UserProfile(
+            id: "mock_user_otp_789",
+            email: email,
+            fullName: "Usuario de Correo"
+        )
+        sessionToken = "mock_session_token_otp"
+    }
+
     public func signOut() async throws {
         currentUser = nil
         sessionToken = nil
     }
-    
+
     public func deleteAccount() async throws {
         try await signOut()
     }

@@ -73,6 +73,33 @@ struct LectoriaTests {
         #expect(limits.activePlan == .premiumLifetime)
         #expect(limits.hasPremiumAccess == true)
     }
+
+    @Test func testMockAuthServiceLifecycle() async throws {
+        let authService = MockAuthService()
+        #expect(authService.currentUser == nil)
+
+        // Apple Auth with Nonce
+        try await authService.signInWithApple(identityToken: "test_token", rawNonce: "nonce_123", email: "apple@lectoria.app", fullName: "Apple User")
+        #expect(authService.currentUser != nil)
+        #expect(authService.currentUser?.email == "apple@lectoria.app")
+
+        try await authService.signOut()
+        #expect(authService.currentUser == nil)
+
+        // Google Auth
+        try await authService.signInWithGoogle(idToken: "google_token", accessToken: "google_access")
+        #expect(authService.currentUser != nil)
+        #expect(authService.currentUser?.email == "google_user@lectoria.app")
+
+        try await authService.signOut()
+        #expect(authService.currentUser == nil)
+
+        // OTP Email Auth
+        try await authService.sendOTPCode(to: "user@lectoria.app")
+        try await authService.verifyOTPCode(email: "user@lectoria.app", code: "123456")
+        #expect(authService.currentUser != nil)
+        #expect(authService.currentUser?.email == "user@lectoria.app")
+    }
 }
 
 // MARK: - Mock Repositories for Tests
