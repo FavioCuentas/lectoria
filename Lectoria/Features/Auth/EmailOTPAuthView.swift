@@ -162,25 +162,53 @@ struct EmailOTPAuthView: View {
             return
         }
 
-        withAnimation {
-            isCodeSent = true
-            resendCountdown = 60
-        }
+        isProcessing = true
 
-        startResendTimer()
+        Task {
+            do {
+                try await dependencies.authService.sendOTPCode(to: trimmed)
+                await MainActor.run {
+                    self.isProcessing = false
+                    withAnimation {
+                        self.isCodeSent = true
+                        self.resendCountdown = 60
+                    }
+                    self.startResendTimer()
+                }
+            } catch {
+                await MainActor.run {
+                    self.isProcessing = false
+                    self.errorMessage = error.localizedDescription
+                    self.showErrorAlert = true
+                }
+            }
+        }
     }
 
     private func verifyOTPCode() {
         let code = otpCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !code.isEmpty else { return }
 
-        Task {
-            // Simulamos verificación exitosa de token OTP o integración con Supabase Auth
-            let dummyUserID = "user_" + UUID().uuidString.prefix(8)
-            await dependencies.migrateGuestData(to: String(dummyUserID))
+        isProcessing = true
 
-            await MainActor.run {
-                onSuccess()
+        Task {
+            do {
+                try await dependencies.authService.verifyOTPCode(email: trimmedEmail, code: code)
+                if let user = dependencies.authService.currentUser {
+                    await dependencies.migrateGuestData(to: user.id)
+                }
+
+                await MainActor.run {
+                    self.isProcessing = false
+                    onSuccess()
+                }
+            } catch {
+                await MainActor.run {
+                    self.isProcessing = false
+                    self.errorMessage = error.localizedDescription
+                    self.showErrorAlert = true
+                }
             }
         }
     }

@@ -189,21 +189,59 @@ struct InstitutionalAuthView: View {
         let validDomains = [".edu", ".edu.pe", ".edu.co", ".edu.mx", ".edu.ar", ".edu.cl", ".ac.uk", "lectoria.edu"]
         let isKnownInstitutionalDomain = validDomains.contains { domain.contains($0) }
 
-        if isKnownInstitutionalDomain {
-            errorMessage = String(localized: "Institución reconocida (\(domain)). Te hemos enviado un enlace/código de verificación a tu correo institucional.", comment: "Institutional domain recognized")
+        guard isKnownInstitutionalDomain else {
+            errorMessage = String(localized: "El dominio (\(domain)) no se encuentra registrado con un convenio institucional activo.", comment: "Unrecognized domain notice")
             showErrorAlert = true
-        } else {
-            errorMessage = String(localized: "El dominio (\(domain)) no se encuentra registrado con un convenio institucional activo. Te enviamos instrucciones para solicitar el acceso de tu centro educativo.", comment: "Unrecognized domain notice")
-            showErrorAlert = true
+            return
+        }
+
+        isProcessing = true
+
+        Task {
+            do {
+                try await dependencies.authService.sendOTPCode(to: trimmed)
+                await MainActor.run {
+                    self.isProcessing = false
+                    withAnimation {
+                        self.isEnteringCode = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isProcessing = false
+                    self.errorMessage = error.localizedDescription
+                    self.showErrorAlert = true
+                }
+            }
         }
     }
 
     private func validateAccessCode() {
         let code = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !code.isEmpty else { return }
 
-        errorMessage = String(localized: "Código institucional verificado correctamente.", comment: "Code success notice")
-        showErrorAlert = true
+        isProcessing = true
+
+        Task {
+            do {
+                try await dependencies.authService.verifyOTPCode(email: trimmedEmail.isEmpty ? "institucion@lectoria.edu" : trimmedEmail, code: code)
+                if let user = dependencies.authService.currentUser {
+                    await dependencies.migrateGuestData(to: user.id)
+                }
+
+                await MainActor.run {
+                    self.isProcessing = false
+                    onSuccess()
+                }
+            } catch {
+                await MainActor.run {
+                    self.isProcessing = false
+                    self.errorMessage = error.localizedDescription
+                    self.showErrorAlert = true
+                }
+            }
+        }
     }
 
     private func handleGoogleInstitutional() {
