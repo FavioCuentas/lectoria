@@ -199,6 +199,8 @@ struct EmailOTPAuthView: View {
                     await dependencies.migrateGuestData(to: user.id)
                 }
 
+                dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "email_otp"])
+
                 await MainActor.run {
                     self.isProcessing = false
                     onSuccess()

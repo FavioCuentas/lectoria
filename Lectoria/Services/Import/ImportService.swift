@@ -37,19 +37,22 @@ public final class ImportService: Sendable {
     private let metadataExtractor: DocumentMetadataExtractor
     private let coverGenerator: CoverGenerator
     private let entitlementService: (any FeatureEntitlementService)?
+    private let analyticsService: (any AnalyticsService)?
 
     public init(
         publicationRepository: any PublicationRepository,
         fileStorageService: FileStorageService = FileStorageService(),
         metadataExtractor: DocumentMetadataExtractor = DocumentMetadataExtractor(),
         coverGenerator: CoverGenerator = CoverGenerator(),
-        entitlementService: (any FeatureEntitlementService)? = nil
+        entitlementService: (any FeatureEntitlementService)? = nil,
+        analyticsService: (any AnalyticsService)? = nil
     ) {
         self.publicationRepository = publicationRepository
         self.fileStorageService = fileStorageService
         self.metadataExtractor = metadataExtractor
         self.coverGenerator = coverGenerator
         self.entitlementService = entitlementService
+        self.analyticsService = analyticsService
     }
 
     /// Importa un archivo a partir de una URL local (puede ser un recurso de seguridad externa de iOS).
@@ -147,6 +150,11 @@ public final class ImportService: Sendable {
         record.coverPath = coverPath
 
         try await publicationRepository.save(record)
+
+        analyticsService?.track(.documentImported, properties: [
+            "format": publicationType.rawValue,
+            "file_size_bucket": PropertySanitizer.bucketFileSize(fileSize)
+        ])
 
         return record
     }

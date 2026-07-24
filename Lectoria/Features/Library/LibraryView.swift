@@ -60,6 +60,12 @@ struct LibraryView: View {
                 TextReaderView(record: record)
             }
         }
+        .onAppear {
+            dependencies.analyticsService.track(.libraryViewed, properties: [
+                "total_documents_count": publicationModels.count,
+                "favorite_count": publicationModels.filter { $0.isFavorite }.count
+            ])
+        }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {

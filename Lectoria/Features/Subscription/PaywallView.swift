@@ -55,6 +55,12 @@ struct PaywallView: View {
                 .padding(.vertical, AppSpacing.md)
             }
             .background(AppColor.background(for: theme))
+            .onAppear {
+                let isPremium = dependencies.subscriptionService.hasActiveSubscription
+                dependencies.analyticsService.track(.paywallViewed, properties: [
+                    "current_plan": isPremium ? "premium" : "free"
+                ])
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(String(localized: "Cerrar", comment: "Paywall: close button")) {
@@ -422,6 +428,12 @@ struct PaywallView: View {
         Task {
             do {
                 let transaction = try await dependencies.subscriptionService.purchase(product)
+                if transaction != nil {
+                    dependencies.analyticsService.track(.purchaseCompleted, properties: [
+                        "product_id": product.id,
+                        "price": product.displayPrice
+                    ])
+                }
                 await MainActor.run {
                     self.isLoading = false
                     if transaction != nil {

@@ -87,7 +87,8 @@ public final class AppDependencies {
         self.importService = ImportService(
             publicationRepository: pubRepo,
             fileStorageService: fileStorage,
-            entitlementService: entitlement
+            entitlementService: entitlement,
+            analyticsService: self.analyticsService
         )
         
         self.aiService = aiService ?? LocalDeviceAIService()

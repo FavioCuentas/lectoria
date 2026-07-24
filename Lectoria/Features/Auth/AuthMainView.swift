@@ -229,6 +229,7 @@ struct AuthMainView: View {
 
     private func guestOptionSection(theme: AppTheme) -> some View {
         Button {
+            dependencies.analyticsService.track(.guestModeEntered)
             onContinueAsGuest()
         } label: {
             HStack(spacing: AppSpacing.xs) {
@@ -296,6 +297,8 @@ struct AuthMainView: View {
                     if let user = dependencies.authService.currentUser {
                         await dependencies.migrateGuestData(to: user.id)
                     }
+
+                    dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "apple"])
 
                     await MainActor.run {
                         onAuthSuccess()

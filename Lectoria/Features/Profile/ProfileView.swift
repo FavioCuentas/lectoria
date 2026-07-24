@@ -140,6 +140,18 @@ struct ProfileView: View {
                         title: String(localized: "Consentimiento de IA", comment: "Profile: AI consent toggle"),
                         variant: .toggle(consentBinding)
                     )
+
+                    Divider()
+
+                    let analyticsBinding = Binding<Bool>(
+                        get: { AnalyticsPrivacyManager.shared.isAnalyticsEnabled },
+                        set: { AnalyticsPrivacyManager.shared.isAnalyticsEnabled = $0 }
+                    )
+                    SettingsRow(
+                        icon: "shield.ruler",
+                        title: String(localized: "Compartir analítica anónima", comment: "Profile: anonymous analytics toggle"),
+                        variant: .toggle(analyticsBinding)
+                    )
                 }
 
                 // Sección: Datos
