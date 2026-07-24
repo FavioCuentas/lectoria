@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 // MARK: - SupabaseAuthService
 
@@ -14,6 +15,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
 
     private let supabaseURL: String
     private let anonKey: String
+    private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Auth")
 
     public init(supabaseURL: String, anonKey: String) {
         self.supabaseURL = supabaseURL
@@ -31,13 +33,58 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         }
     }
 
+    /// Configura los encabezados estándar HTTP para comunicarse con Supabase API Gateway (Kong/Envoy).
+    private func applyHeaders(to request: inout URLRequest, withToken bearerToken: String? = nil) {
+        request.setValue(anonKey, forHTTPHeaderField: "apikey")
+        let token = bearerToken ?? anonKey
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("lectoria-ios/1.0", forHTTPHeaderField: "X-Client-Info")
+    }
+
+    /// Procesa y registra detalladamente los errores devueltos por Supabase Auth API.
+    private func parseSupabaseError(from data: Data, response: HTTPURLResponse) -> NSError {
+        let statusCode = response.statusCode
+        let requestId = response.value(forHTTPHeaderField: "sb-request-id") ?? response.value(forHTTPHeaderField: "x-request-id") ?? "unknown_request_id"
+        let headerErrorCode = response.value(forHTTPHeaderField: "x-sb-error-code") ?? "none"
+
+        var jsonMsg: String? = nil
+        var jsonErrorCode: String? = nil
+
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            jsonMsg = json["msg"] as? String ?? json["message"] as? String ?? json["error_description"] as? String
+            jsonErrorCode = json["error_code"] as? String ?? json["code"] as? String
+        }
+
+        let message = jsonMsg ?? String(data: data, encoding: .utf8) ?? "Error de autenticación (\(statusCode))"
+        let errorCode = jsonErrorCode ?? headerErrorCode
+
+        logger.error("""
+        ❌ [SupabaseAuth Error]
+        • Status Code: \(statusCode)
+        • SB-Request-ID: \(requestId)
+        • Header Error Code: \(headerErrorCode)
+        • JSON Error Code: \(errorCode)
+        • Message: \(message)
+        """)
+
+        print("❌ [SupabaseAuth Diagnostic] Status: \(statusCode) | RequestID: \(requestId) | ErrorCode: \(errorCode) | Msg: \(message)")
+
+        return NSError(domain: "SupabaseAuth", code: statusCode, userInfo: [
+            NSLocalizedDescriptionKey: message,
+            "errorCode": errorCode,
+            "requestId": requestId,
+            "statusCode": statusCode
+        ])
+    }
+
     /// Inicia sesión con Apple enviando el token de identidad (JWT) y nonce a Supabase.
     public func signInWithApple(identityToken: String, rawNonce: String?, email: String?, fullName: String?) async throws {
         let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=id_token")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyHeaders(to: &request)
 
         var body: [String: Any] = [
             "provider": "apple",
@@ -64,8 +111,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Error desconocido en Supabase Auth"
-            throw NSError(domain: "SupabaseAuth", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+            throw parseSupabaseError(from: data, response: httpResponse)
         }
 
         let session = try JSONDecoder().decode(SupabaseSessionResponse.self, from: data)
@@ -80,7 +126,6 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
             )
             self.currentUser = profile
 
-            // Persistir tokens en el Keychain
             if let tokenData = session.accessToken.data(using: .utf8) {
                 KeychainHelper.save(key: "sessionToken", data: tokenData)
             }
@@ -95,8 +140,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=id_token")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyHeaders(to: &request)
 
         var body: [String: Any] = [
             "provider": "google",
@@ -110,9 +154,12 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Error en autenticación con Google"
-            throw NSError(domain: "SupabaseAuth", code: (response as? HTTPURLResponse)?.statusCode ?? 400, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw parseSupabaseError(from: data, response: httpResponse)
         }
 
         let session = try JSONDecoder().decode(SupabaseSessionResponse.self, from: data)
@@ -141,8 +188,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         let url = URL(string: "\(supabaseURL)/auth/v1/otp")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyHeaders(to: &request)
 
         let body: [String: Any] = [
             "email": email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
@@ -153,9 +199,12 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Error al enviar código OTP"
-            throw NSError(domain: "SupabaseAuth", code: (response as? HTTPURLResponse)?.statusCode ?? 400, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw parseSupabaseError(from: data, response: httpResponse)
         }
     }
 
@@ -164,8 +213,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         let url = URL(string: "\(supabaseURL)/auth/v1/verify")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyHeaders(to: &request)
 
         let body: [String: Any] = [
             "type": "email",
@@ -177,9 +225,12 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Código de verificación inválido o expirado"
-            throw NSError(domain: "SupabaseAuth", code: (response as? HTTPURLResponse)?.statusCode ?? 400, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw parseSupabaseError(from: data, response: httpResponse)
         }
 
         let session = try JSONDecoder().decode(SupabaseSessionResponse.self, from: data)
@@ -210,8 +261,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         let url = URL(string: "\(supabaseURL)/auth/v1/logout")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        applyHeaders(to: &request, withToken: token)
 
         _ = try? await URLSession.shared.data(for: request)
 
@@ -230,14 +280,16 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         let url = URL(string: "\(supabaseURL)/rest/v1/rpc/delete_user_account")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.setValue(anonKey, forHTTPHeaderField: "apikey")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        applyHeaders(to: &request, withToken: token)
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            let errorMsg = String(data: data, encoding: .utf8) ?? "Error al eliminar cuenta en Supabase"
-            throw NSError(domain: "SupabaseAuth", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw parseSupabaseError(from: data, response: httpResponse)
         }
 
         try await signOut()
