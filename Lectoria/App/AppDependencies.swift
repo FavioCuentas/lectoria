@@ -84,6 +84,13 @@ public final class AppDependencies {
         )
         self.entitlementService = entitlement
 
+        self.analyticsService = analyticsService ?? SupabaseAnalyticsService(
+            container: modelContainer,
+            authService: self.authService,
+            supabaseURL: env.supabaseURL,
+            anonKey: env.supabaseAnonKey
+        )
+
         self.importService = ImportService(
             publicationRepository: pubRepo,
             fileStorageService: fileStorage,
@@ -94,13 +101,6 @@ public final class AppDependencies {
         self.aiService = aiService ?? LocalDeviceAIService()
         
         self.syncService = syncService ?? SupabaseSyncService(container: modelContainer, authService: self.authService, supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
-
-        self.analyticsService = analyticsService ?? SupabaseAnalyticsService(
-            container: modelContainer,
-            authService: self.authService,
-            supabaseURL: env.supabaseURL,
-            anonKey: env.supabaseAnonKey
-        )
     }
 
     /// Migra idempotentemente todas las publicaciones locales, anotaciones, progresos y consumos de IA de invitado al nuevo ID de usuario registrado.
