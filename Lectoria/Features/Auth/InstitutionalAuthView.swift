@@ -186,7 +186,7 @@ struct InstitutionalAuthView: View {
         guard parts.count == 2 else { return }
         let domain = parts[1]
 
-        let validDomains = [".edu", ".edu.bo", ".edu.pe", ".edu.co", ".edu.mx", ".edu.ar", ".edu.cl", ".ac.uk", "lectoria.edu"]
+        let validDomains = [".edu", ".edu.bo", ".edu.pe", ".edu.co", ".edu.mx", ".edu.ar", ".edu.cl", ".ac.uk", "lectoria.edu", "orvexaio.com"]
         let isKnownInstitutionalDomain = validDomains.contains { domain.contains($0) }
 
         guard isKnownInstitutionalDomain else {
