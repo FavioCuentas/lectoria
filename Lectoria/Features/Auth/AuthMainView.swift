@@ -107,7 +107,7 @@ struct AuthMainView: View {
             Button {
                 showInstitutionalAuth = true
             } label: {
-                HStack(spacing: AppSpacing.md) {
+                HStack(spacing: AppSpacing.sm) {
                     Image(systemName: "building.columns.fill")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundStyle(.white)
@@ -116,18 +116,22 @@ struct AuthMainView: View {
                         Text("Continuar con mi institución")
                             .font(AppTypography.bodyBold)
                             .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
 
                         Text("Universidad, colegio o centro educativo", comment: "Institutional button subtitle")
                             .font(AppTypography.caption)
                             .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
-                    Spacer()
+                    Spacer(minLength: 4)
 
                     Image(systemName: "chevron.right")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white.opacity(0.8))
                 }
-                .padding(.horizontal, AppSpacing.lg)
+                .padding(.horizontal, AppSpacing.md)
                 .frame(height: 60)
                 .background(AppColor.accent(for: theme))
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
@@ -165,7 +169,7 @@ struct AuthMainView: View {
             Button {
                 handleGoogleSignIn()
             } label: {
-                HStack(spacing: AppSpacing.md) {
+                HStack(spacing: AppSpacing.sm) {
                     Image(systemName: "g.circle.fill")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(AppColor.textPrimary(for: theme))
@@ -173,10 +177,12 @@ struct AuthMainView: View {
                     Text("Continuar con Google")
                         .font(AppTypography.bodyBold)
                         .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
-                    Spacer()
+                    Spacer(minLength: 4)
                 }
-                .padding(.horizontal, AppSpacing.lg)
+                .padding(.horizontal, AppSpacing.md)
                 .frame(height: 50)
                 .background(AppColor.surface(for: theme))
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
@@ -204,7 +210,7 @@ struct AuthMainView: View {
             Button {
                 showEmailAuth = true
             } label: {
-                HStack(spacing: AppSpacing.md) {
+                HStack(spacing: AppSpacing.sm) {
                     Image(systemName: "envelope.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(AppColor.textPrimary(for: theme))
@@ -212,10 +218,12 @@ struct AuthMainView: View {
                     Text("Continuar con correo electrónico")
                         .font(AppTypography.bodyBold)
                         .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
-                    Spacer()
+                    Spacer(minLength: 4)
                 }
-                .padding(.horizontal, AppSpacing.lg)
+                .padding(.horizontal, AppSpacing.md)
                 .frame(height: 50)
                 .background(AppColor.surface(for: theme))
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))

@@ -210,47 +210,63 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
 
     /// Verifica un código OTP enviado al correo mediante `/auth/v1/verify`.
     public func verifyOTPCode(email: String, code: String) async throws {
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cleanCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
         let url = URL(string: "\(supabaseURL)/auth/v1/verify")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        applyHeaders(to: &request)
 
-        let body: [String: Any] = [
-            "type": "email",
-            "email": email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-            "token": code.trimmingCharacters(in: .whitespacesAndNewlines)
-        ]
+        let typesToTry = ["email", "signup", "magiclink"]
+        var lastError: Error?
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        for tokenType in typesToTry {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            applyHeaders(to: &request)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+            let body: [String: Any] = [
+                "type": tokenType,
+                "email": cleanEmail,
+                "token": cleanCode
+            ]
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
+            do {
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
+                let (data, response) = try await URLSession.shared.data(for: request)
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw URLError(.badServerResponse)
+                }
+
+                if (200...299).contains(httpResponse.statusCode) {
+                    let session = try JSONDecoder().decode(SupabaseSessionResponse.self, from: data)
+
+                    await MainActor.run {
+                        self.sessionToken = session.accessToken
+                        let profile = UserProfile(
+                            id: session.user.id,
+                            email: session.user.email ?? cleanEmail,
+                            fullName: session.user.userMetadata?.fullName,
+                            createdAt: session.user.createdAt ?? Date()
+                        )
+                        self.currentUser = profile
+
+                        if let tokenData = session.accessToken.data(using: .utf8) {
+                            KeychainHelper.save(key: "sessionToken", data: tokenData)
+                        }
+                        if let profileData = try? JSONEncoder().encode(profile) {
+                            KeychainHelper.save(key: "userProfile", data: profileData)
+                        }
+                    }
+                    return
+                } else {
+                    lastError = parseSupabaseError(from: data, response: httpResponse)
+                }
+            } catch {
+                lastError = error
+            }
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw parseSupabaseError(from: data, response: httpResponse)
-        }
-
-        let session = try JSONDecoder().decode(SupabaseSessionResponse.self, from: data)
-
-        await MainActor.run {
-            self.sessionToken = session.accessToken
-            let profile = UserProfile(
-                id: session.user.id,
-                email: session.user.email ?? email,
-                fullName: session.user.userMetadata?.fullName,
-                createdAt: session.user.createdAt ?? Date()
-            )
-            self.currentUser = profile
-
-            if let tokenData = session.accessToken.data(using: .utf8) {
-                KeychainHelper.save(key: "sessionToken", data: tokenData)
-            }
-            if let profileData = try? JSONEncoder().encode(profile) {
-                KeychainHelper.save(key: "userProfile", data: profileData)
-            }
+        if let lastError {
+            throw lastError
         }
     }
 

@@ -102,17 +102,45 @@ struct EmailOTPAuthView: View {
 
     private func otpForm(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
+            // Banner de confirmación de envío con el correo destino
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "paperplane.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(AppColor.accent(for: theme))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Código enviado a:")
+                        .font(AppTypography.caption)
+                        .foregroundStyle(AppColor.textTertiary(for: theme))
+
+                    Text(email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+                        .font(AppTypography.bodyBold)
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
+            .padding(AppSpacing.md)
+            .background(AppColor.surface(for: theme))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.sm)
+                    .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
+            )
+
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text("Código de 6 dígitos", comment: "OTP code field label")
                     .font(AppTypography.footnote.weight(.semibold))
                     .foregroundStyle(AppColor.textSecondary(for: theme))
 
                 TextField("123456", text: $otpCode)
-                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                    .font(.system(size: 26, weight: .bold, design: .monospaced))
                     .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, AppSpacing.md)
-                    .frame(height: 52)
+                    .frame(height: 54)
                     .background(AppColor.surface(for: theme))
                     .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
                     .overlay(
@@ -129,12 +157,13 @@ struct EmailOTPAuthView: View {
             HStack {
                 Button {
                     withAnimation {
+                        otpCode = ""
                         isCodeSent = false
                     }
                 } label: {
                     Text("Cambiar correo", comment: "Change email link")
-                        .font(AppTypography.caption)
-                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                        .font(AppTypography.caption.weight(.semibold))
+                        .foregroundStyle(AppColor.accent(for: theme))
                 }
 
                 Spacer()
@@ -146,7 +175,7 @@ struct EmailOTPAuthView: View {
                         .font(AppTypography.caption.weight(.semibold))
                         .foregroundStyle(resendCountdown > 0 ? AppColor.textTertiary(for: theme) : AppColor.accent(for: theme))
                 }
-                .disabled(resendCountdown > 0)
+                .disabled(resendCountdown > 0 || isProcessing)
             }
             .padding(.top, AppSpacing.xs)
         }
