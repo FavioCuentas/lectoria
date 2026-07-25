@@ -56,27 +56,6 @@ struct InstitutionalAuthView: View {
                 // MARK: - Opciones adicionales
                 VStack(alignment: .leading, spacing: AppSpacing.md) {
                     Button {
-                        handleGoogleInstitutional()
-                    } label: {
-                        HStack {
-                            Image(systemName: "g.circle.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                            Text("Ingresar con Google institucional")
-                                .font(AppTypography.bodyBold)
-                            Spacer()
-                        }
-                        .foregroundStyle(AppColor.textPrimary(for: theme))
-                        .padding(.horizontal, AppSpacing.lg)
-                        .frame(height: 48)
-                        .background(AppColor.surface(for: theme))
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppRadius.md)
-                                .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
-                        )
-                    }
-
-                    Button {
                         withAnimation {
                             isEnteringCode.toggle()
                             errorMessage = nil
@@ -244,10 +223,5 @@ struct InstitutionalAuthView: View {
                 }
             }
         }
-    }
-
-    private func handleGoogleInstitutional() {
-        errorMessage = String(localized: "Iniciando verificación institucional con Google Workspace...", comment: "Google workspace notice")
-        showErrorAlert = true
     }
 }
