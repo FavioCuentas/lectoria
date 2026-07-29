@@ -182,7 +182,6 @@ public final class AppDependencies {
         }
     }
 
-    #if DEBUG
     /// Inicializador mock/in-memory para previews de SwiftUI y pruebas rápidas.
     public static var preview: AppDependencies {
         let container = ModelContainerFactory.create(isStoredInMemoryOnly: true)
@@ -196,5 +195,4 @@ public final class AppDependencies {
             analyticsService: MockAnalyticsService()
         )
     }
-    #endif
 }

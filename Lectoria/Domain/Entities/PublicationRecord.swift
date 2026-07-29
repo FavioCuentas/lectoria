@@ -154,7 +154,6 @@ public struct PublicationRecord: Identifiable, Codable, Sendable, Hashable {
 
 // MARK: - Preview fixtures
 
-#if DEBUG
 extension PublicationRecord {
     /// Fixture para previews y tests.
     public static let previewEPUB = PublicationRecord.newImport(
@@ -218,4 +217,3 @@ extension PublicationRecord {
         .previewPastedText,
     ]
 }
-#endif
