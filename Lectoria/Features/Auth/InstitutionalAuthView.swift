@@ -2,10 +2,11 @@ import SwiftUI
 
 // MARK: - InstitutionalAuthView
 
-/// Pantalla de acceso institucional por correo, dominio, código de un solo uso y Google Workspace.
+/// Pantalla de Acceso Institucional de Lectoria con arquitectura MVVM y separación estricta de rutas.
 ///
-/// Cumple la Sección 6 de LECTORIA_AUTENTICACION_Y_PLANES.md:
-/// Identificación por dominio de correo, validación de membresía y enrutamiento institucional.
+/// Soporta dos rutas independientes:
+/// 1. Acceso mediante correo institucional con verificación de dominio en Supabase.
+/// 2. Acceso mediante código de convenio institucional con validación en Edge Function `validate-institution-code`.
 struct InstitutionalAuthView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(ThemeManager.self) private var themeManager
@@ -13,215 +14,376 @@ struct InstitutionalAuthView: View {
 
     let onSuccess: () -> Void
 
-    @State private var email = ""
-    @State private var accessCode = ""
-    @State private var isEnteringCode = false
-    @State private var isProcessing = false
-    @State private var errorMessage: String? = nil
-    @State private var showErrorAlert = false
-    @State private var statusMessage: String? = nil
+    @State private var viewModel: InstitutionalAuthViewModel? = nil
 
     var body: some View {
         let theme = themeManager.currentTheme
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
-                // MARK: - Encabezado
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    HStack {
-                        Image(systemName: "building.columns.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(AppColor.accent(for: theme))
+        Group {
+            if let viewModel {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                        // MARK: - Encabezado Principal
+                        headerView(theme: theme, viewModel: viewModel)
 
-                        Text("Acceso institucional")
-                            .font(.system(size: 24, weight: .bold, design: .serif))
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                        // MARK: - Contenido según Estado
+                        switch viewModel.state {
+                        case .idle, .validatingInstitution, .failed:
+                            if viewModel.route == .code {
+                                codeStepView(theme: theme, viewModel: viewModel)
+                            } else {
+                                emailStepView(theme: theme, viewModel: viewModel)
+                            }
+
+                            routeSelectorButtons(theme: theme, viewModel: viewModel)
+
+                        case .institutionValidated(let institution):
+                            emailForValidatedCodeView(theme: theme, viewModel: viewModel, institution: institution)
+
+                        case .sendingOTP:
+                            loadingStateView(theme: theme, message: "Enviando código de verificación...")
+
+                        case .awaitingOTP(let email, let institution):
+                            otpVerificationStepView(theme: theme, viewModel: viewModel, email: email, institution: institution)
+
+                        case .verifyingOTP:
+                            loadingStateView(theme: theme, message: "Verificando código de acceso...")
+
+                        case .linkingMembership:
+                            loadingStateView(theme: theme, message: "Vinculando membresía institucional...")
+
+                        case .authenticated:
+                            loadingStateView(theme: theme, message: "¡Acceso concedido! Redirigiendo...")
+                        }
                     }
-
-                    Text(isEnteringCode
-                         ? "Ingresa el código proporcionado por tu institución."
-                         : "Ingresa el correo proporcionado por tu universidad, colegio o centro educativo.",
-                         comment: "Institutional subtitle")
-                        .font(AppTypography.body)
-                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.vertical, AppSpacing.lg)
                 }
-
-                // MARK: - Formulario de Correo o Código
-                if isEnteringCode {
-                    codeForm(theme: theme)
-                } else {
-                    emailForm(theme: theme)
-                }
-
-                // MARK: - Opciones adicionales
-                VStack(alignment: .leading, spacing: AppSpacing.md) {
-                    Button {
-                        withAnimation {
-                            isEnteringCode.toggle()
-                            errorMessage = nil
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: isEnteringCode ? "envelope.fill" : "key.fill")
-                                .font(.system(size: 16))
-                            Text(isEnteringCode ? "Ingresar con mi correo institucional" : "Tengo un código de acceso")
-                                .font(AppTypography.callout.weight(.semibold))
-                        }
-                        .foregroundStyle(AppColor.accent(for: theme))
-                    }
-
-                    Link(destination: URL(string: "https://lectoria.app/instituciones")!) {
-                        HStack {
-                            Image(systemName: "questionmark.circle")
-                                .font(.system(size: 14))
-                            Text("Mi institución no aparece o necesita ayuda")
-                                .font(AppTypography.caption)
-                        }
-                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                .background(AppColor.background(for: theme))
+                .navigationBarTitleDisplayMode(.inline)
+                .alert(String(localized: "Acceso Institucional", comment: "Institutional alert title"), isPresented: Binding(
+                    get: { viewModel.showErrorAlert },
+                    set: { viewModel.showErrorAlert = $0 }
+                )) {
+                    Button(String(localized: "Aceptar", comment: "Alert OK"), role: .cancel) {}
+                } message: {
+                    if let errorMessage = viewModel.errorMessage {
+                        Text(errorMessage)
                     }
                 }
+            } else {
+                ProgressView()
             }
-            .padding(.horizontal, AppSpacing.screenHorizontal)
-            .padding(.vertical, AppSpacing.lg)
         }
-        .background(AppColor.background(for: theme))
-        .navigationBarTitleDisplayMode(.inline)
-        .alert(String(localized: "Acceso Institucional", comment: "Institutional alert title"), isPresented: $showErrorAlert) {
-            Button(String(localized: "Aceptar", comment: "Alert OK"), role: .cancel) {}
-        } message: {
-            if let errorMessage {
-                Text(errorMessage)
+        .onAppear {
+            if viewModel == nil {
+                let vm = InstitutionalAuthViewModel(
+                    institutionService: dependencies.institutionService,
+                    authService: dependencies.authService,
+                    onGuestMigrate: { userID in
+                        await dependencies.migrateGuestData(to: userID)
+                    },
+                    onSuccess: {
+                        dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "institutional"])
+                        onSuccess()
+                    }
+                )
+                self.viewModel = vm
             }
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Encabezado
 
-    private func emailForm(theme: AppTheme) -> some View {
+    @ViewBuilder
+    private func headerView(theme: AppTheme, viewModel: InstitutionalAuthViewModel) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "building.columns.fill")
+                    .font(.system(size: 28))
+                    .foregroundStyle(AppColor.accent(for: theme))
+                    .accessibilityHidden(true)
+
+                Text("Acceso institucional")
+                    .font(.system(size: 24, weight: .bold, design: .serif))
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+            }
+
+            Text(headerSubtitle(for: viewModel))
+                .font(AppTypography.body)
+                .foregroundStyle(AppColor.textSecondary(for: theme))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func headerSubtitle(for viewModel: InstitutionalAuthViewModel) -> String {
+        switch viewModel.state {
+        case .awaitingOTP:
+            return "Ingresa el código de 6 dígitos enviado a tu correo institucional."
+        case .institutionValidated(let inst):
+            return "Código válido para \(inst.name). Ingresa tu correo para continuar."
+        default:
+            return viewModel.route == .code
+                ? "Ingresa el código proporcionado por tu universidad o institución."
+                : "Ingresa el correo proporcionado por tu universidad, colegio o centro educativo."
+        }
+    }
+
+    // MARK: - Componentes de Formulario
+
+    @ViewBuilder
+    private func emailStepView(theme: AppTheme, viewModel: InstitutionalAuthViewModel) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             Text("Correo institucional", comment: "Institutional email label")
                 .font(AppTypography.footnote.weight(.semibold))
                 .foregroundStyle(AppColor.textSecondary(for: theme))
 
-            TextField("ejemplo@universidad.edu", text: $email)
-                .font(AppTypography.body)
-                .keyboardType(.emailAddress)
-                .textContentType(.emailAddress)
-                .autocapitalization(.none)
-                .disableAutocorrection(true)
-                .padding(.horizontal, AppSpacing.md)
-                .frame(height: 48)
-                .background(AppColor.surface(for: theme))
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppRadius.sm)
-                        .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
-                )
+            TextField("ejemplo@universidad.edu", text: Binding(
+                get: { viewModel.email },
+                set: { viewModel.email = $0 }
+            ))
+            .font(AppTypography.body)
+            .keyboardType(.emailAddress)
+            .textContentType(.emailAddress)
+            .autocapitalization(.none)
+            .disableAutocorrection(true)
+            .padding(.horizontal, AppSpacing.md)
+            .frame(height: 48)
+            .background(AppColor.surface(for: theme))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.sm)
+                    .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
+            )
 
             PrimaryButton(String(localized: "Continuar", comment: "Institutional continue button")) {
-                validateInstitutionalEmail()
+                Task {
+                    await viewModel.validateEmailAndSendOTP()
+                }
             }
-            .disabled(email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isProcessing)
+            .disabled(viewModel.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isBusy(viewModel: viewModel))
         }
     }
 
-    private func codeForm(theme: AppTheme) -> some View {
+    @ViewBuilder
+    private func codeStepView(theme: AppTheme, viewModel: InstitutionalAuthViewModel) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             Text("Código de acceso", comment: "Institutional code label")
                 .font(AppTypography.footnote.weight(.semibold))
                 .foregroundStyle(AppColor.textSecondary(for: theme))
 
-            TextField("Ej: UNIV-2026-X9K2", text: $accessCode)
-                .font(AppTypography.body)
-                .autocapitalization(.allCharacters)
-                .disableAutocorrection(true)
+            TextField("Ej: UCB-2026-X9K2", text: Binding(
+                get: { viewModel.accessCode },
+                set: { viewModel.accessCode = $0 }
+            ))
+            .font(AppTypography.body)
+            .autocapitalization(.allCharacters)
+            .disableAutocorrection(true)
+            .padding(.horizontal, AppSpacing.md)
+            .frame(height: 48)
+            .background(AppColor.surface(for: theme))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.sm)
+                    .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
+            )
+
+            PrimaryButton(String(localized: "Continuar", comment: "Institutional continue code button")) {
+                Task {
+                    await viewModel.validateAccessCode()
+                }
+            }
+            .disabled(viewModel.accessCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isBusy(viewModel: viewModel))
+        }
+    }
+
+    @ViewBuilder
+    private func emailForValidatedCodeView(theme: AppTheme, viewModel: InstitutionalAuthViewModel, institution: InstitutionInfo) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            HStack {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(.green)
+                Text("Institución verificada: \(institution.name)")
+                    .font(AppTypography.footnote.weight(.semibold))
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+            }
+            .padding(AppSpacing.sm)
+            .background(AppColor.surface(for: theme))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+
+            Text("Correo institucional", comment: "Institutional email for validated code")
+                .font(AppTypography.footnote.weight(.semibold))
+                .foregroundStyle(AppColor.textSecondary(for: theme))
+
+            TextField("ejemplo@\(institution.slug).edu", text: Binding(
+                get: { viewModel.email },
+                set: { viewModel.email = $0 }
+            ))
+            .font(AppTypography.body)
+            .keyboardType(.emailAddress)
+            .textContentType(.emailAddress)
+            .autocapitalization(.none)
+            .disableAutocorrection(true)
+            .padding(.horizontal, AppSpacing.md)
+            .frame(height: 48)
+            .background(AppColor.surface(for: theme))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.sm)
+                    .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
+            )
+
+            PrimaryButton(String(localized: "Enviar código de verificación", comment: "Send verification code")) {
+                Task {
+                    await viewModel.validateEmailAndSendOTP()
+                }
+            }
+            .disabled(viewModel.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isBusy(viewModel: viewModel))
+
+            Button {
+                viewModel.resetToInitialStep()
+            } label: {
+                Text("Volver e ingresar otro código")
+                    .font(AppTypography.callout)
+                    .foregroundStyle(AppColor.accent(for: theme))
+            }
+        }
+    }
+
+    // MARK: - Paso de OTP
+
+    @ViewBuilder
+    private func otpVerificationStepView(
+        theme: AppTheme,
+        viewModel: InstitutionalAuthViewModel,
+        email: String,
+        institution: InstitutionInfo?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            if let institution {
+                HStack {
+                    Image(systemName: "building.2.fill")
+                        .foregroundStyle(AppColor.accent(for: theme))
+                    Text(institution.name)
+                        .font(AppTypography.callout.weight(.bold))
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text("Código de verificación de 6 dígitos")
+                    .font(AppTypography.footnote.weight(.semibold))
+                    .foregroundStyle(AppColor.textSecondary(for: theme))
+
+                TextField("123456", text: Binding(
+                    get: { viewModel.otpCode },
+                    set: { viewModel.otpCode = String($0.prefix(6)) }
+                ))
+                .font(.system(size: 24, weight: .bold, design: .monospaced))
+                .multilineTextAlignment(.center)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
                 .padding(.horizontal, AppSpacing.md)
-                .frame(height: 48)
+                .frame(height: 52)
                 .background(AppColor.surface(for: theme))
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
                 .overlay(
                     RoundedRectangle(cornerRadius: AppRadius.sm)
                         .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
                 )
-
-            PrimaryButton(String(localized: "Validar código", comment: "Validate code button")) {
-                validateAccessCode()
             }
-            .disabled(accessCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isProcessing)
-        }
-    }
 
-    // MARK: - Actions
+            PrimaryButton(String(localized: "Verificar e ingresar", comment: "Verify OTP button")) {
+                Task {
+                    await viewModel.verifyOTPAndLinkMembership()
+                }
+            }
+            .disabled(viewModel.otpCode.trimmingCharacters(in: .whitespacesAndNewlines).count != 6 || isBusy(viewModel: viewModel))
 
-    private func validateInstitutionalEmail() {
-        let trimmed = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard trimmed.contains("@") && trimmed.contains(".") else {
-            errorMessage = String(localized: "Por favor ingresa un correo electrónico válido.", comment: "Invalid email notice")
-            showErrorAlert = true
-            return
-        }
-
-        let parts = trimmed.components(separatedBy: "@")
-        guard parts.count == 2 else { return }
-        let domain = parts[1]
-
-        let validDomains = [".edu", ".edu.bo", ".edu.pe", ".edu.co", ".edu.mx", ".edu.ar", ".edu.cl", ".ac.uk", "lectoria.edu", "orvexaio.com"]
-        let isKnownInstitutionalDomain = validDomains.contains { domain.contains($0) }
-
-        guard isKnownInstitutionalDomain else {
-            errorMessage = String(localized: "El dominio (\(domain)) no se encuentra registrado con un convenio institucional activo.", comment: "Unrecognized domain notice")
-            showErrorAlert = true
-            return
-        }
-
-        isProcessing = true
-
-        Task {
-            do {
-                try await dependencies.authService.sendOTPCode(to: trimmed)
-                await MainActor.run {
-                    self.isProcessing = false
-                    withAnimation {
-                        self.isEnteringCode = true
+            HStack {
+                Button {
+                    Task {
+                        await viewModel.resendOTP()
+                    }
+                } label: {
+                    if viewModel.resendCountdown > 0 {
+                        Text("Reenviar código (\(viewModel.resendCountdown)s)")
+                            .font(AppTypography.caption)
+                            .foregroundStyle(AppColor.textTertiary(for: theme))
+                    } else {
+                        Text("Reenviar código de verificación")
+                            .font(AppTypography.callout.weight(.semibold))
+                            .foregroundStyle(AppColor.accent(for: theme))
                     }
                 }
-            } catch {
-                await MainActor.run {
-                    self.isProcessing = false
-                    self.errorMessage = error.localizedDescription
-                    self.showErrorAlert = true
+                .disabled(viewModel.resendCountdown > 0)
+
+                Spacer()
+
+                Button {
+                    viewModel.resetToInitialStep()
+                } label: {
+                    Text("Cambiar correo")
+                        .font(AppTypography.callout)
+                        .foregroundStyle(AppColor.accent(for: theme))
                 }
             }
         }
     }
 
-    private func validateAccessCode() {
-        let code = accessCode.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !code.isEmpty else { return }
+    // MARK: - Pantalla de Carga y Opciones de Ruta
 
-        isProcessing = true
-
-        Task {
-            do {
-                try await dependencies.authService.verifyOTPCode(email: trimmedEmail.isEmpty ? "institucion@lectoria.edu" : trimmedEmail, code: code)
-                if let user = dependencies.authService.currentUser {
-                    await dependencies.migrateGuestData(to: user.id)
+    @ViewBuilder
+    private func routeSelectorButtons(theme: AppTheme, viewModel: InstitutionalAuthViewModel) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            Button {
+                withAnimation {
+                    let nextRoute: InstitutionalRoute = (viewModel.route == .code) ? .email : .code
+                    viewModel.selectRoute(nextRoute)
                 }
-
-                dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "institutional"])
-
-                await MainActor.run {
-                    self.isProcessing = false
-                    onSuccess()
+            } label: {
+                HStack {
+                    Image(systemName: viewModel.route == .code ? "envelope.fill" : "key.fill")
+                        .font(.system(size: 16))
+                    Text(viewModel.route == .code ? "Ingresar con mi correo institucional" : "Tengo un código de acceso")
+                        .font(AppTypography.callout.weight(.semibold))
                 }
-            } catch {
-                await MainActor.run {
-                    self.isProcessing = false
-                    self.errorMessage = error.localizedDescription
-                    self.showErrorAlert = true
-                }
+                .frame(minHeight: 44)
+                .foregroundStyle(AppColor.accent(for: theme))
             }
+
+            Link(destination: URL(string: "https://lectoria.app/instituciones")!) {
+                HStack {
+                    Image(systemName: "questionmark.circle")
+                        .font(.system(size: 14))
+                    Text("Mi institución no aparece o necesita ayuda")
+                        .font(AppTypography.caption)
+                }
+                .frame(minHeight: 44)
+                .foregroundStyle(AppColor.textTertiary(for: theme))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func loadingStateView(theme: AppTheme, message: String) -> some View {
+        VStack(spacing: AppSpacing.md) {
+            ProgressView()
+                .scaleEffect(1.2)
+            Text(message)
+                .font(AppTypography.body)
+                .foregroundStyle(AppColor.textSecondary(for: theme))
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, AppSpacing.xl)
+    }
+
+    private func isBusy(viewModel: InstitutionalAuthViewModel) -> Bool {
+        switch viewModel.state {
+        case .validatingInstitution, .sendingOTP, .verifyingOTP, .linkingMembership:
+            return true
+        default:
+            return false
         }
     }
 }

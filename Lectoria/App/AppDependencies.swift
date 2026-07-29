@@ -29,10 +29,12 @@ public final class AppDependencies {
     public let aiService: any AIService
     public let syncService: any SyncService
     public let analyticsService: any AnalyticsService
+    public let institutionService: any InstitutionService
 
     public init(
         modelContainer: ModelContainer,
         authService: (any AuthService)? = nil,
+        institutionService: (any InstitutionService)? = nil,
         subscriptionService: (any SubscriptionService)? = nil,
         aiService: (any AIService)? = nil,
         syncService: (any SyncService)? = nil,
@@ -65,6 +67,14 @@ public final class AppDependencies {
         let isFakeConfig = env.supabaseURL.contains("fake") || env.supabaseURL.contains("lectoria.app") || env.supabaseAnonKey.contains("fake")
         
         self.authService = authService ?? SupabaseAuthService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+
+        if let institutionService {
+            self.institutionService = institutionService
+        } else if isFakeConfig {
+            self.institutionService = MockInstitutionService()
+        } else {
+            self.institutionService = SupabaseInstitutionService(supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+        }
 
         let subService: any SubscriptionService
         if isFakeConfig {
@@ -179,6 +189,7 @@ public final class AppDependencies {
         return AppDependencies(
             modelContainer: container,
             authService: MockAuthService(),
+            institutionService: MockInstitutionService(),
             subscriptionService: MockSubscriptionService(),
             aiService: MockAIService(),
             syncService: MockSyncService(),

@@ -10,6 +10,7 @@ public final class MockAuthService: AuthService, @unchecked Sendable {
     public var sessionToken: String? = nil
 
     public var shouldFail = false
+    public var shouldFailOTP = false
 
     public init(currentUser: UserProfile? = nil, sessionToken: String? = nil) {
         self.currentUser = currentUser
@@ -43,14 +44,14 @@ public final class MockAuthService: AuthService, @unchecked Sendable {
     }
 
     public func sendOTPCode(to email: String) async throws {
-        if shouldFail {
+        if shouldFail || shouldFailOTP {
             throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado al enviar código OTP"])
         }
     }
 
     public func verifyOTPCode(email: String, code: String) async throws {
-        if shouldFail {
-            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Código OTP inválido"])
+        if shouldFail || shouldFailOTP || code != "123456" {
+            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "El código de verificación es incorrecto."])
         }
 
         currentUser = UserProfile(
