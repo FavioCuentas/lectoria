@@ -36,7 +36,7 @@ public final class ImportService: Sendable {
     private let fileStorageService: FileStorageService
     private let metadataExtractor: DocumentMetadataExtractor
     private let coverGenerator: CoverGenerator
-    private let entitlementService: (any FeatureEntitlementService)?
+    private let entitlementService: (any EntitlementService)?
     private let analyticsService: (any AnalyticsService)?
 
     public init(
@@ -44,7 +44,7 @@ public final class ImportService: Sendable {
         fileStorageService: FileStorageService = FileStorageService(),
         metadataExtractor: DocumentMetadataExtractor = DocumentMetadataExtractor(),
         coverGenerator: CoverGenerator = CoverGenerator(),
-        entitlementService: (any FeatureEntitlementService)? = nil,
+        entitlementService: (any EntitlementService)? = nil,
         analyticsService: (any AnalyticsService)? = nil
     ) {
         self.publicationRepository = publicationRepository
@@ -60,19 +60,29 @@ public final class ImportService: Sendable {
     /// - Returns: El registro `PublicationRecord` creado e insertado en la persistencia.
     @MainActor
     public func importPublication(from url: URL) async throws -> PublicationRecord {
-        // Validar límite del plan gratuito
-        if let entitlementService {
-            let canImport = await entitlementService.canPerformAction(.importDocument)
-            if !canImport {
-                let limits = await entitlementService.getLimits()
-                throw ImportError.limitExceeded(String(localized: "Has alcanzado el límite de tu plan gratuito (\(limits.documentsLimit) documentos). Suscríbete a Premium para importar de forma ilimitada.", comment: "Limit exceeded error"))
-            }
-        }
-
         // 1. Validar el formato del archivo por su extensión
         let ext = url.pathExtension.lowercased()
         guard let publicationType = PublicationType.from(fileExtension: ext) else {
             throw ImportError.unsupportedFormat(extension: ext)
+        }
+
+        // 2. Validar restricciones de formato y límites del plan según Entitlements
+        if let entitlementService {
+            let accessResult = await entitlementService.canAccess(.importDocument(format: publicationType))
+            switch accessResult {
+            case .allowed:
+                break
+            case .requiresPremium:
+                throw ImportError.limitExceeded(String(localized: "El formato \(publicationType.displayName) está reservado para el plan Premium. Suscríbete para importar documentos en PDF, PPTX y Markdown.", comment: "Format restriction error"))
+            case .limitReached(let msg):
+                throw ImportError.limitExceeded(msg)
+            case .requiresCompatibleDevice:
+                throw ImportError.limitExceeded(String(localized: "Tu dispositivo o sistema operativo no es compatible con este formato.", comment: "Device compatibility error"))
+            case .institutionalOnly:
+                throw ImportError.limitExceeded(String(localized: "Este formato requiere un acceso institucional verificado.", comment: "Institutional error"))
+            case .unavailable(let reason):
+                throw ImportError.limitExceeded(reason)
+            }
         }
 
         // 2. Manejar acceso a recursos seguros (security-scoped resources)

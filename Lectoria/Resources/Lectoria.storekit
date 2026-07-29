@@ -1,7 +1,28 @@
 {
   "identifier" : "LectoriaStoreKitConfig",
   "nonRenewingSubscriptions" : [ ],
-  "products" : [ ],
+  "products" : [
+    {
+      "displayPrice" : "19.99",
+      "familyShareable" : false,
+      "internalID" : "lifetime_premium",
+      "localizations" : [
+        {
+          "description" : "Acceso de por vida a las funciones principales del lector Lectoría.",
+          "displayName" : "Lectoría Lifetime",
+          "locale" : "es"
+        },
+        {
+          "description" : "Lifetime access to core reader features.",
+          "displayName" : "Lectoría Lifetime",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.lectoria.premium.lifetime",
+      "referenceName" : "Lectoría Lifetime",
+      "type" : "NonConsumable"
+    }
+  ],
   "settings" : {
     "_failTransactionsEnabled" : false,
     "_locale" : "es_ES",
@@ -31,49 +52,59 @@
           "displayPrice" : "4.99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "monthly_premium",
-          "introductoryOffer" : null,
+          "internalID" : "founder_premium",
+          "introductoryOffer" : {
+            "internalID" : "founder_trial",
+            "paymentMode" : "free",
+            "numberOfPeriods" : 1,
+            "subscriptionPeriod" : "P7D"
+          },
           "localizations" : [
             {
-              "description" : "Acceso premium mensual ilimitado.",
-              "displayName" : "Premium Mensual",
+              "description" : "Precio especial Fundador anual con 7 días de prueba gratuita.",
+              "displayName" : "Premium Fundador (Anual)",
               "locale" : "es"
             },
             {
-              "description" : "Unlimited premium access monthly.",
-              "displayName" : "Premium Monthly",
+              "description" : "Special Founder yearly price with 7-day free trial.",
+              "displayName" : "Premium Founder (Yearly)",
               "locale" : "en_US"
             }
           ],
-          "productID" : "com.lectoria.premium.monthly",
-          "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Premium Monthly",
+          "productID" : "com.lectoria.premium.founder",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Premium Founder",
           "subscriptionGroupID" : "premium_group",
           "type" : "Recurring"
         },
         {
           "adHocOffers" : [ ],
           "codeOffers" : [ ],
-          "displayPrice" : "39.99",
+          "displayPrice" : "9.99",
           "familyShareable" : false,
           "groupNumber" : 2,
-          "internalID" : "yearly_premium",
-          "introductoryOffer" : null,
+          "internalID" : "regular_premium",
+          "introductoryOffer" : {
+            "internalID" : "regular_trial",
+            "paymentMode" : "free",
+            "numberOfPeriods" : 1,
+            "subscriptionPeriod" : "P7D"
+          },
           "localizations" : [
             {
-              "description" : "Acceso premium anual ilimitado (ahorra 33%).",
-              "displayName" : "Premium Anual",
+              "description" : "Acceso premium anual ilimitado con 7 días de prueba gratuita.",
+              "displayName" : "Premium Regular (Anual)",
               "locale" : "es"
             },
             {
-              "description" : "Unlimited premium access yearly (save 33%).",
-              "displayName" : "Premium Yearly",
+              "description" : "Unlimited premium access yearly with 7-day free trial.",
+              "displayName" : "Premium Regular (Yearly)",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.lectoria.premium.yearly",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "Premium Yearly",
+          "referenceName" : "Premium Regular",
           "subscriptionGroupID" : "premium_group",
           "type" : "Recurring"
         }

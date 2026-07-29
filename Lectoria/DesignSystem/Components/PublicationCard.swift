@@ -211,7 +211,22 @@ struct PublicationCard: View {
                     .strokeBorder(AppColor.border(for: theme).opacity(0.4), lineWidth: 1)
             )
 
-            if publication.isPinned {
+            if publication.isArchived {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(AppSpacing.xxs)
+                            .background(Color.orange)
+                            .clipShape(Circle())
+                            .padding(AppSpacing.xs)
+                            .shadow(color: Color.black.opacity(0.3), radius: 2, x: 0, y: 1)
+                    }
+                    Spacer()
+                }
+            } else if publication.isPinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)

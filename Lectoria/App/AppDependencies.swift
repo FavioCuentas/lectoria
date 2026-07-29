@@ -25,7 +25,7 @@ public final class AppDependencies {
     public let importService: ImportService
     public let authService: any AuthService
     public let subscriptionService: any SubscriptionService
-    public let entitlementService: any FeatureEntitlementService
+    public let entitlementService: any EntitlementService
     public let aiService: any AIService
     public let syncService: any SyncService
     public let analyticsService: any AnalyticsService

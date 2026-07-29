@@ -4,45 +4,47 @@ import Observation
 
 // MARK: - StoreKitSubscriptionService
 
-/// Implementación concreta de `SubscriptionService` utilizando StoreKit 2 de Apple.
+/// Implementación concreta de `SubscriptionService` y `PurchaseService` utilizando StoreKit 2 de Apple.
 ///
 /// Monitoriza el estado de las compras, actualiza el estado de la suscripción y
 /// persiste localmente el entitlement activo en la base de datos para soporte offline.
 @Observable
-public final class StoreKitSubscriptionService: SubscriptionService, @unchecked Sendable {
+public final class StoreKitSubscriptionService: SubscriptionService, PurchaseService, @unchecked Sendable {
     public private(set) var hasActiveSubscription: Bool = false
     public private(set) var activeEntitlement: SubscriptionEntitlement? = nil
-    
+
     private let repository: any SubscriptionRepository
     private var updatesTask: Task<Void, Never>? = nil
-    
+
+    public static let founderProductID = "com.lectoria.premium.founder"
+    public static let yearlyProductID = "com.lectoria.premium.yearly"
+    public static let lifetimeProductID = "com.lectoria.premium.lifetime"
+
     private let productIDs = [
-        "com.lectoria.premium.monthly",
-        "com.lectoria.premium.yearly",
-        "com.lectoria.premium.lifetime"
+        founderProductID,
+        yearlyProductID,
+        lifetimeProductID
     ]
-    
+
     public init(repository: any SubscriptionRepository) {
         self.repository = repository
-        
-        // Ejecutar carga inicial y observaciones asíncronamente
+
         Task {
             await loadCachedEntitlement()
             await observeTransactionUpdates()
-            await updateSubscriptionStatus()
+            await refreshCurrentEntitlements()
         }
     }
-    
+
     deinit {
         updatesTask?.cancel()
     }
-    
+
     /// Carga rápida inicial desde la persistencia local de SwiftData
     private func loadCachedEntitlement() async {
         do {
             let entitlements = try await repository.fetchAllEntitlements()
             if let active = entitlements.first(where: { $0.status == "active" }) {
-                // Si ya expiró, actualizar estado
                 if let exp = active.expirationDate, exp < Date() {
                     var expired = active
                     expired.status = "expired"
@@ -58,14 +60,15 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
             print("[StoreKitSubscriptionService] Error al verificar active entitlements: \(error.localizedDescription)")
         }
     }
-    
-    /// Escucha transacciones del App Store en tiempo de ejecución (ej. renovaciones, compras externas)
-    private func observeTransactionUpdates() async {
+
+    /// Escucha transacciones del App Store en tiempo de ejecución (renovaciones, reembolsos, revocaciones)
+    public func observeTransactionUpdates() async {
+        updatesTask?.cancel()
         updatesTask = Task {
             for await result in Transaction.updates {
                 do {
                     let transaction = try checkVerified(result)
-                    await updateSubscriptionStatus()
+                    await refreshCurrentEntitlements()
                     await transaction.finish()
                 } catch {
                     print("[StoreKitSubscriptionService] Error al observar transacciones: \(error.localizedDescription)")
@@ -73,48 +76,68 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
             }
         }
     }
-    
-    /// Carga productos directamente de StoreKit
+
+    /// Carga productos directamente de StoreKit 2
     public func loadProducts() async throws -> [StoreKit.Product] {
         return try await StoreKit.Product.products(for: productIDs)
     }
-    
-    /// Realiza compra de una suscripción
-    public func purchase(_ product: StoreKit.Product) async throws -> Transaction? {
+
+    /// Realiza compra de un producto y devuelve `PurchaseOutcome` tipado
+    public func purchase(_ product: StoreKit.Product) async throws -> PurchaseOutcome {
         let result = try await product.purchase()
-        
+
         switch result {
         case .success(let verification):
             let transaction = try checkVerified(verification)
-            await updateSubscriptionStatus()
+            await refreshCurrentEntitlements()
+            await transaction.finish()
+            return .success(productID: transaction.productID)
+
+        case .userCancelled:
+            return .userCancelled
+
+        case .pending:
+            return .pending
+
+        @unknown default:
+            return .failed(error: String(localized: "Respuesta de compra desconocida del sistema.", comment: "Unknown purchase result"))
+        }
+    }
+
+    /// Método de compatibilidad para `SubscriptionService`
+    public func purchase(_ product: StoreKit.Product) async throws -> Transaction? {
+        let result = try await product.purchase()
+
+        switch result {
+        case .success(let verification):
+            let transaction = try checkVerified(verification)
+            await refreshCurrentEntitlements()
             await transaction.finish()
             return transaction
-        case .pending, .userCancelled:
-            return nil
-        @unknown default:
+        default:
             return nil
         }
     }
-    
-    /// Fuerza la sincronización de transacciones previas
+
+    /// Fuerza la sincronización de transacciones previas con AppStore.sync()
     public func restorePurchases() async throws {
         try await AppStore.sync()
-        await updateSubscriptionStatus()
+        await refreshCurrentEntitlements()
     }
-    
-    /// Escanea entitlements activos y actualiza el estado local
-    private func updateSubscriptionStatus() async {
+
+    /// Escanea entitlements activos y actualiza la persistencia local
+    public func refreshCurrentEntitlements() async {
         var foundActive = false
         var activeEnt: SubscriptionEntitlement? = nil
-        
+
         for await result in Transaction.currentEntitlements {
             do {
                 let transaction = try checkVerified(result)
-                
+
                 if productIDs.contains(transaction.productID) {
                     let isRevoked = transaction.revocationDate != nil
                     let isExpired = transaction.expirationDate.map { $0 < Date() } ?? false
-                    
+
                     let status: String
                     if isRevoked {
                         status = "revoked"
@@ -123,7 +146,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
                     } else {
                         status = "active"
                     }
-                    
+
                     let entitlement = SubscriptionEntitlement(
                         productID: transaction.productID,
                         status: status,
@@ -132,29 +155,29 @@ public final class StoreKitSubscriptionService: SubscriptionService, @unchecked 
                         willAutoRenew: true,
                         lastVerifiedAt: Date()
                     )
-                    
+
                     try? await repository.saveEntitlement(entitlement)
-                    
+
                     if status == "active" {
                         foundActive = true
                         activeEnt = entitlement
                     }
                 }
             } catch {
-                print("[StoreKitSubscriptionService] Error al procesar entitlement de transaccion: \(error.localizedDescription)")
+                print("[StoreKitSubscriptionService] Error al procesar entitlement de transacción: \(error.localizedDescription)")
             }
         }
-        
+
         let hasActive = foundActive
         let ent = activeEnt
-        
+
         await MainActor.run {
             self.hasActiveSubscription = hasActive
             self.activeEntitlement = ent
         }
     }
-    
-    /// Verifica la firma del resultado de transacción
+
+    /// Verifica la firma criptográfica del resultado de transacción
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified(_, let error):

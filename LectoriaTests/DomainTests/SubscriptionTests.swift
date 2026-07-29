@@ -34,9 +34,9 @@ struct SubscriptionTests {
         var limits = await entitlementService.getLimits()
         #expect(limits.hasPremiumAccess == false)
         #expect(limits.documentsLimit == 5)
-        #expect(limits.highlightsLimit == 30)
-        #expect(limits.notesLimit == 15)
-        #expect(limits.aiActionsLimit == 3)
+        #expect(limits.highlightsLimit == Int.max)
+        #expect(limits.notesLimit == Int.max)
+        #expect(limits.aiActionsLimit == 10)
         
         #expect(await entitlementService.canPerformAction(.importDocument) == true)
         
@@ -98,6 +98,6 @@ struct SubscriptionTests {
         // 1. Simular restauración
         try await dependencies.subscriptionService.restorePurchases()
         #expect(dependencies.subscriptionService.hasActiveSubscription == true)
-        #expect(dependencies.subscriptionService.activeEntitlement?.productID == "com.lectoria.premium.monthly")
+        #expect(dependencies.subscriptionService.activeEntitlement?.productID == "com.lectoria.premium.yearly")
     }
 }
