@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import CryptoKit
 
 // MARK: - AuthMainView
 
@@ -23,6 +24,7 @@ struct AuthMainView: View {
     @State private var isProcessing = false
     @State private var errorMessage: String? = nil
     @State private var showErrorAlert = false
+    @State private var currentNonce: String? = nil
 
     var body: some View {
         let theme = themeManager.currentTheme
@@ -192,11 +194,14 @@ struct AuthMainView: View {
                 )
             }
 
-            // Apple Sign-In Nativo
+            // Apple Sign-In Nativo con Nonce seguro
             SignInWithAppleButton(
                 .continue,
                 onRequest: { request in
+                    let nonce = randomNonceString()
+                    currentNonce = nonce
                     request.requestedScopes = [.email, .fullName]
+                    request.nonce = sha256(nonce)
                 },
                 onCompletion: { result in
                     handleAppleSignIn(result: result)
@@ -292,11 +297,13 @@ struct AuthMainView: View {
             }
 
             let email = appleIDCredential.email
+            let rawNonce = currentNonce
 
             Task {
                 do {
                     try await dependencies.authService.signInWithApple(
                         identityToken: identityToken,
+                        rawNonce: rawNonce,
                         email: email,
                         fullName: fullName
                     )
@@ -330,5 +337,27 @@ struct AuthMainView: View {
         // Enrutamiento preparado para Google Sign-In PKCE en Supabase
         errorMessage = String(localized: "Redirigiendo a autenticación segura de Google...", comment: "Google auth redirect notice")
         showErrorAlert = true
+    }
+
+    // MARK: - Helpers de Criptografía para Apple Nonce
+
+    private func randomNonceString(length: Int = 32) -> String {
+        precondition(length > 0)
+        var randomBytes = [UInt8](repeating: 0, count: length)
+        let errorCode = SecRandomCopyBytes(kSecRandomDefault, randomBytes.count, &randomBytes)
+        if errorCode != errSecSuccess {
+            fatalError("No se pudo generar el nonce aleatorio.")
+        }
+        let charset: [Character] = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz-._")
+        let nonce = String(randomBytes.map { byte in
+            charset[Int(byte) % charset.count]
+        })
+        return nonce
+    }
+
+    private func sha256(_ input: String) -> String {
+        let inputData = Data(input.utf8)
+        let hashedData = SHA256.hash(data: inputData)
+        return hashedData.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
