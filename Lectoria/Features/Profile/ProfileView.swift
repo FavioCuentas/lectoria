@@ -18,6 +18,7 @@ struct ProfileView: View {
     @State private var showDeleteAlert = false
     @State private var showErrorAlert = false
     @State private var showPaywall = false
+    @State private var showMyDevices = false
     @State private var showAuthMainView = false
     @State private var errorMessage: String? = nil
 
@@ -106,6 +107,15 @@ struct ProfileView: View {
                         if !isPremium {
                             showPaywall = true
                         }
+                    }
+
+                    Divider()
+
+                    SettingsRow(
+                        icon: "laptopcomputer.and.iphone",
+                        title: String(localized: "Mis dispositivos", comment: "Profile: my devices link")
+                    ) {
+                        showMyDevices = true
                     }
                 }
 
@@ -252,6 +262,9 @@ struct ProfileView: View {
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
+        }
+        .sheet(isPresented: $showMyDevices) {
+            MyDevicesView()
         }
         .sheet(isPresented: $showAuthMainView) {
             AuthMainView(
