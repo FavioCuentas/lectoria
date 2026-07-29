@@ -334,7 +334,7 @@ struct AuthMainView: View {
     }
 
     private func handleGoogleSignIn() {
-        let authURLString = "\(dependencies.authService.supabaseURL)/auth/v1/authorize?provider=google&redirect_to=lectoria://auth-callback"
+        let authURLString = "\(dependencies.authService.supabaseURL)/auth/v1/authorize?provider=google&redirect_to=lectoria://auth-callback&prompt=consent&access_type=offline"
         guard let authURL = URL(string: authURLString) else { return }
 
         let contextProvider = WebAuthContextProvider()
