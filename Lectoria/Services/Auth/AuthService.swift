@@ -22,6 +22,9 @@ public protocol AuthService: AnyObject, Sendable {
     /// Establece la sesión activa a partir de los tokens de acceso obtenidos vía OAuth (Google, etc.).
     func setSessionFromOAuth(accessToken: String, refreshToken: String?) async throws
 
+    /// Intercambia un código de autorización PKCE por una sesión activa de Supabase.
+    func exchangeCodeForSession(code: String) async throws
+
     /// Envia un código OTP de un solo uso por correo electrónico.
     func sendOTPCode(to email: String) async throws
 

@@ -57,6 +57,19 @@ public final class MockAuthService: AuthService, @unchecked Sendable {
         sessionToken = accessToken
     }
 
+    public func exchangeCodeForSession(code: String) async throws {
+        if shouldFail {
+            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado PKCE Code Exchange"])
+        }
+
+        currentUser = UserProfile(
+            id: "mock_user_pkce_999",
+            email: "google_pkce_user@lectoria.app",
+            fullName: "Usuario de Google PKCE"
+        )
+        sessionToken = "mock_session_token_pkce"
+    }
+
     public func sendOTPCode(to email: String) async throws {
         if shouldFail || shouldFailOTP {
             throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado al enviar código OTP"])

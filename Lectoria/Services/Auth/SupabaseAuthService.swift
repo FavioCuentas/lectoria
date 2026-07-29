@@ -272,6 +272,30 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         await handleSessionResponse(session)
     }
 
+    /// Intercambia un código de autorización PKCE por una sesión activa de Supabase.
+    public func exchangeCodeForSession(code: String) async throws {
+        let url = URL(string: "\(supabaseURL)/auth/v1/token?grant_type=pkce")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        applyHeaders(to: &request)
+
+        let body = ["auth_code": code]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw parseSupabaseError(from: data, response: httpResponse)
+        }
+
+        let session = try makeDecoder().decode(SupabaseSessionResponse.self, from: data)
+        await handleSessionResponse(session)
+    }
+
     /// Solicita el envío de un código OTP de un solo uso por correo electrónico a Supabase GoTrue `/auth/v1/otp`.
     public func sendOTPCode(to email: String) async throws {
         let url = URL(string: "\(supabaseURL)/auth/v1/otp")!

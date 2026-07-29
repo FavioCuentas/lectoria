@@ -358,20 +358,34 @@ struct AuthMainView: View {
             guard let components = URLComponents(string: urlString),
                   let queryItems = components.queryItems else { return }
 
-            let accessToken = queryItems.first(where: { $0.name == "access_token" })?.value
-            let refreshToken = queryItems.first(where: { $0.name == "refresh_token" })?.value
-
-            guard let token = accessToken else {
+            // Comprobar si vino un mensaje de error explícito de OAuth/Supabase
+            if let errorDescription = queryItems.first(where: { $0.name == "error_description" })?.value ?? queryItems.first(where: { $0.name == "error" })?.value {
+                let cleanError = errorDescription.replacingOccurrences(of: "+", with: " ")
                 Task { @MainActor in
-                    self.errorMessage = String(localized: "No se pudo recuperar la sesión de Google.", comment: "Google token missing")
+                    self.errorMessage = cleanError
                     self.showErrorAlert = true
                 }
                 return
             }
 
+            let accessToken = queryItems.first(where: { $0.name == "access_token" })?.value
+            let refreshToken = queryItems.first(where: { $0.name == "refresh_token" })?.value
+            let authCode = queryItems.first(where: { $0.name == "code" })?.value
+
             Task {
                 do {
-                    try await dependencies.authService.setSessionFromOAuth(accessToken: token, refreshToken: refreshToken)
+                    if let token = accessToken {
+                        try await dependencies.authService.setSessionFromOAuth(accessToken: token, refreshToken: refreshToken)
+                    } else if let code = authCode {
+                        try await dependencies.authService.exchangeCodeForSession(code: code)
+                    } else {
+                        await MainActor.run {
+                            self.errorMessage = String(localized: "No se pudo recuperar la sesión de Google.", comment: "Google token missing")
+                            self.showErrorAlert = true
+                        }
+                        return
+                    }
+
                     if let user = dependencies.authService.currentUser {
                         await dependencies.migrateGuestData(to: user.id)
                     }
