@@ -152,7 +152,7 @@ struct EmailOTPAuthView: View {
             PrimaryButton(String(localized: "Verificar e ingresar", comment: "Verify OTP button")) {
                 verifyOTPCode()
             }
-            .disabled(otpCode.trimmingCharacters(in: .whitespacesAndNewlines).count < 4 || isProcessing)
+            .disabled(otpCode.trimmingCharacters(in: .whitespacesAndNewlines).count != 6 || isProcessing)
 
             HStack {
                 Button {
