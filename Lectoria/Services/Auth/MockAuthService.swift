@@ -8,6 +8,7 @@ import Observation
 public final class MockAuthService: AuthService, @unchecked Sendable {
     public var currentUser: UserProfile? = nil
     public var sessionToken: String? = nil
+    public var supabaseURL: String = "https://qikgjqbqjlgoeuxtujiy.supabase.co"
 
     public var shouldFail = false
     public var shouldFailOTP = false
@@ -41,6 +42,19 @@ public final class MockAuthService: AuthService, @unchecked Sendable {
             fullName: "Usuario de Google"
         )
         sessionToken = "mock_session_token_google"
+    }
+
+    public func setSessionFromOAuth(accessToken: String, refreshToken: String?) async throws {
+        if shouldFail {
+            throw NSError(domain: "MockAuth", code: 400, userInfo: [NSLocalizedDescriptionKey: "Error simulado de autenticación con Google OAuth"])
+        }
+
+        currentUser = UserProfile(
+            id: "mock_user_google_oauth_789",
+            email: "google_oauth_user@lectoria.app",
+            fullName: "Usuario de Google OAuth"
+        )
+        sessionToken = accessToken
     }
 
     public func sendOTPCode(to email: String) async throws {

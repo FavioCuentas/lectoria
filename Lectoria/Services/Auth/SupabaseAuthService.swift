@@ -15,7 +15,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
     public private(set) var refreshToken: String? = nil
     public private(set) var sessionExpiresAt: Date? = nil
 
-    private let supabaseURL: String
+    public let supabaseURL: String
     private let anonKey: String
     private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Auth")
 
@@ -240,6 +240,35 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         }
 
         let session = try makeDecoder().decode(SupabaseSessionResponse.self, from: data)
+        await handleSessionResponse(session)
+    }
+
+    /// Establece la sesión activa obteniendo el perfil del usuario vía `/auth/v1/user` usando el access token devuelto por OAuth.
+    public func setSessionFromOAuth(accessToken: String, refreshToken: String?) async throws {
+        let url = URL(string: "\(supabaseURL)/auth/v1/user")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        applyHeaders(to: &request, withToken: accessToken)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw parseSupabaseError(from: data, response: httpResponse)
+        }
+
+        let user = try makeDecoder().decode(SupabaseUser.self, from: data)
+        let session = SupabaseSessionResponse(
+            accessToken: accessToken,
+            refreshToken: refreshToken,
+            expiresIn: 3600,
+            expiresAt: nil,
+            tokenType: "bearer",
+            user: user
+        )
         await handleSessionResponse(session)
     }
 

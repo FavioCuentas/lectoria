@@ -7,6 +7,9 @@ public protocol AuthService: AnyObject, Sendable {
     /// Perfil del usuario actualmente autenticado (nil si es un invitado).
     var currentUser: UserProfile? { get }
 
+    /// URL base de Supabase configurada.
+    var supabaseURL: String { get }
+
     /// Token JWT de la sesión activa de Supabase (nil si no hay sesión).
     var sessionToken: String? { get }
 
@@ -15,6 +18,9 @@ public protocol AuthService: AnyObject, Sendable {
 
     /// Inicia sesión con Google OAuth 2.0 enviando el ID Token o Access Token a Supabase.
     func signInWithGoogle(idToken: String, accessToken: String?) async throws
+
+    /// Establece la sesión activa a partir de los tokens de acceso obtenidos vía OAuth (Google, etc.).
+    func setSessionFromOAuth(accessToken: String, refreshToken: String?) async throws
 
     /// Envia un código OTP de un solo uso por correo electrónico.
     func sendOTPCode(to email: String) async throws

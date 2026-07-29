@@ -334,9 +334,65 @@ struct AuthMainView: View {
     }
 
     private func handleGoogleSignIn() {
-        // Enrutamiento preparado para Google Sign-In PKCE en Supabase
-        errorMessage = String(localized: "Redirigiendo a autenticación segura de Google...", comment: "Google auth redirect notice")
-        showErrorAlert = true
+        let authURLString = "\(dependencies.authService.supabaseURL)/auth/v1/authorize?provider=google&redirect_to=lectoria://auth-callback"
+        guard let authURL = URL(string: authURLString) else { return }
+
+        let contextProvider = WebAuthContextProvider()
+        let session = ASWebAuthenticationSession(
+            url: authURL,
+            callbackURLScheme: "lectoria"
+        ) { callbackURL, error in
+            if let error = error {
+                if (error as NSError).code != ASWebAuthenticationSessionError.canceledLogin.rawValue {
+                    Task { @MainActor in
+                        self.errorMessage = error.localizedDescription
+                        self.showErrorAlert = true
+                    }
+                }
+                return
+            }
+
+            guard let callbackURL = callbackURL else { return }
+
+            let urlString = callbackURL.absoluteString.replacingOccurrences(of: "#", with: "?")
+            guard let components = URLComponents(string: urlString),
+                  let queryItems = components.queryItems else { return }
+
+            let accessToken = queryItems.first(where: { $0.name == "access_token" })?.value
+            let refreshToken = queryItems.first(where: { $0.name == "refresh_token" })?.value
+
+            guard let token = accessToken else {
+                Task { @MainActor in
+                    self.errorMessage = String(localized: "No se pudo recuperar la sesión de Google.", comment: "Google token missing")
+                    self.showErrorAlert = true
+                }
+                return
+            }
+
+            Task {
+                do {
+                    try await dependencies.authService.setSessionFromOAuth(accessToken: token, refreshToken: refreshToken)
+                    if let user = dependencies.authService.currentUser {
+                        await dependencies.migrateGuestData(to: user.id)
+                    }
+
+                    dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "google"])
+
+                    await MainActor.run {
+                        onAuthSuccess()
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.errorMessage = error.localizedDescription
+                        self.showErrorAlert = true
+                    }
+                }
+            }
+        }
+
+        session.presentationContextProvider = contextProvider
+        session.prefersEphemeralWebBrowserSession = false
+        session.start()
     }
 
     // MARK: - Helpers de Criptografía para Apple Nonce
@@ -359,5 +415,18 @@ struct AuthMainView: View {
         let inputData = Data(input.utf8)
         let hashedData = SHA256.hash(data: inputData)
         return hashedData.compactMap { String(format: "%02x", $0) }.joined()
+    }
+}
+
+// MARK: - WebAuthContextProvider
+
+private final class WebAuthContextProvider: NSObject, ASWebAuthenticationPresentationContextProviding {
+    @MainActor
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) else {
+            return ASPresentationAnchor()
+        }
+        return window
     }
 }
