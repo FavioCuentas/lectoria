@@ -66,8 +66,10 @@ struct HomeView: View {
                 PDFReaderView(record: record)
             case .epub:
                 EPUBReaderView(record: record)
-            case .txt, .markdown, .pastedText, .pptx:
+            case .txt, .markdown, .pastedText:
                 TextReaderView(record: record)
+            case .pptx:
+                PresentationReaderView(record: record)
             }
         }
         .task {
