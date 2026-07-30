@@ -167,7 +167,7 @@ public final class AppDependencies {
             let docURL = fileStorageService.publicationsDirectory.appendingPathComponent(pub.localFileName)
             if FileManager.default.fileExists(atPath: docURL.path) {
                 let metadata = ExtractedMetadata(title: pub.title, author: pub.author)
-                if let newCoverPath = try? coverGen.generateCover(
+                if let newCoverPath = try? await coverGen.generateCover(
                     for: docURL,
                     type: pub.publicationType,
                     sha256: pub.sha256,

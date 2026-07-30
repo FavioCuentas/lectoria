@@ -131,7 +131,7 @@ public final class ImportService: Sendable {
         // 7. Generar portada o miniatura física
         var coverPath: String?
         do {
-            coverPath = try coverGenerator.generateCover(
+            coverPath = try await coverGenerator.generateCover(
                 for: tempFileURL,
                 type: publicationType,
                 sha256: sha256,
@@ -216,7 +216,7 @@ public final class ImportService: Sendable {
 
         // Generar una portada bonita para el texto
         let metadata = ExtractedMetadata(title: finalTitle)
-        let coverPath = try? coverGenerator.generateCover(
+        let coverPath = try? await coverGenerator.generateCover(
             for: tempFileURL,
             type: .pastedText,
             sha256: sha256,

@@ -1,5 +1,6 @@
 import UIKit
 import PDFKit
+import QuickLookThumbnailing
 
 // MARK: - CoverGeneratorError
 
@@ -65,7 +66,7 @@ public final class CoverGenerator: @unchecked Sendable {
         sha256: String,
         metadata: ExtractedMetadata,
         force: Bool = false
-    ) throws -> String {
+    ) async throws -> String {
         try ensureCoversDirectoryExists()
         
         let coverFileName = "\(sha256).jpg"
@@ -82,7 +83,7 @@ public final class CoverGenerator: @unchecked Sendable {
         case .epub, .txt, .markdown, .pastedText:
             try generateTextBasedCover(from: url, title: metadata.title, author: metadata.author, to: destinationURL)
         case .pptx:
-            try generatePresentationCover(title: metadata.title, author: metadata.author, to: destinationURL)
+            try await generatePresentationCover(from: url, title: metadata.title, author: metadata.author, to: destinationURL)
         }
 
         return coverFileName
@@ -260,9 +261,32 @@ public final class CoverGenerator: @unchecked Sendable {
         }
     }
 
-    /// Dibuja dinámicamente una portada con estética de diapositiva/presentación para archivos PPTX.
+    /// Genera la portada real de una presentación (.ppt / .pptx) usando `QLThumbnailGenerator`,
+    /// o recurre al dibujo dinámico como fallback en caso de error.
     @MainActor
-    private func generatePresentationCover(title: String, author: String?, to destinationURL: URL) throws {
+    private func generatePresentationCover(from sourceURL: URL, title: String, author: String?, to destinationURL: URL) async throws {
+        let size = CGSize(width: 240, height: 320)
+        let scale = UIScreen.main.scale
+        let request = QLThumbnailGenerator.Request(fileAt: sourceURL, size: size, scale: scale, representationTypes: .thumbnail)
+
+        do {
+            let representation = try await QLThumbnailGenerator.shared.generateBestRepresentation(for: request)
+            let image = representation.uiImage
+            if let data = image.jpegData(compressionQuality: 0.8) {
+                try data.write(to: destinationURL)
+                return
+            }
+        } catch {
+            print("[CoverGenerator] QLThumbnailGenerator no pudo generar miniatura para \(sourceURL.lastPathComponent): \(error.localizedDescription). Usando portada sintética.")
+        }
+
+        // Fallback a portada sintética
+        try drawSyntheticPresentationCover(title: title, author: author, to: destinationURL)
+    }
+
+    /// Dibuja dinámicamente una portada con estética de diapositiva/presentación para archivos PPTX como fallback.
+    @MainActor
+    private func drawSyntheticPresentationCover(title: String, author: String?, to destinationURL: URL) throws {
         let size = CGSize(width: 240, height: 320)
         let renderer = UIGraphicsImageRenderer(size: size)
 
