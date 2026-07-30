@@ -42,6 +42,7 @@ struct PresentationReaderView: View {
         }
         .navigationTitle(record.title)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
