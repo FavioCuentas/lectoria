@@ -59,6 +59,9 @@ struct PDFReaderView: View {
     @State private var showTOC = false
     @State private var showSettings = false
     @State private var showSearch = false
+    @State private var showGoToPageDialog = false
+    @State private var goToPageText = ""
+    @State private var lastJumpOriginLocation: PDFLocation? = nil
     
     // Pestaña activa del índice (TOC vs Marcadores)
     @State private var tocTab: TOCTab = .outline
@@ -272,45 +275,133 @@ struct PDFReaderView: View {
             Spacer()
             
             if showUI {
-                // Barra de Miniaturas (Visual Slider)
-                if let pdfView = pdfViewReference {
-                    VStack(spacing: 0) {
-                        Divider()
-                            .background(AppColor.border(for: theme))
-                        
+                // Botón flotante para volver a la página previa tras un salto
+                if let origin = lastJumpOriginLocation, origin.pageIndex != currentLocation?.pageIndex {
+                    Button {
+                        lastJumpOriginLocation = nil
+                        targetLocation = origin
+                    } label: {
+                        HStack(spacing: AppSpacing.xs) {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.subheadline)
+                            Text(String(localized: "Volver a pág. \(origin.pageLabel ?? "\(origin.pageIndex + 1)")", comment: "Reader: jump back button"))
+                                .font(AppTypography.captionBold)
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.xs)
+                        .background(AppColor.accent(for: theme))
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                        .shadow(color: AppShadow.medium(for: theme).color,
+                                radius: AppShadow.medium(for: theme).radius,
+                                x: AppShadow.medium(for: theme).x,
+                                y: AppShadow.medium(for: theme).y)
+                    }
+                    .padding(.bottom, AppSpacing.xxs)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
+                // Panel Inferior Integrado (Miniaturas + Chips + Progreso)
+                VStack(spacing: 0) {
+                    Divider()
+                        .background(AppColor.border(for: theme))
+
+                    // Barra de Miniaturas (Visual Slider)
+                    if let pdfView = pdfViewReference {
                         PDFThumbnailWrapper(pdfView: pdfView)
                             .frame(height: 64)
                             .padding(.vertical, AppSpacing.xs)
                             .background(AppColor.surfaceSecondary(for: theme))
+                        
+                        Divider()
+                            .background(AppColor.border(for: theme))
                     }
-                    .transition(.opacity)
-                }
 
-                // Barra Inferior (Progreso)
-                VStack(spacing: AppSpacing.xs) {
-                    let pageIndex = currentLocation?.pageIndex ?? 0
-                    let totalPages = currentLocation?.totalPages ?? 1
-                    let progressPercent = Double(pageIndex) / Double(max(1, totalPages - 1))
-                    let pageLabel = currentLocation?.pageLabel ?? "\(pageIndex + 1)"
-                    
-                    HStack {
-                        Text(String(localized: "Página \(pageLabel) de \(totalPages)", comment: "Reader: PDF page progression"))
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                    // Barra de Progreso y Chips
+                    VStack(spacing: AppSpacing.xs) {
+                        let pageIndex = currentLocation?.pageIndex ?? 0
+                        let totalPages = currentLocation?.totalPages ?? 1
+                        let progressPercent = Double(pageIndex) / Double(max(1, totalPages - 1))
+                        let pageLabel = currentLocation?.pageLabel ?? "\(pageIndex + 1)"
                         
-                        Spacer()
+                        // Chips de Marcadores y Notas Guardadas
+                        let savedLocations: [(type: String, label: String, pageIndex: Int)] = bookmarks.compactMap { b in
+                            guard let data = b.anchor.data(using: .utf8),
+                                  let loc = try? JSONDecoder().decode(PDFLocation.self, from: data) else { return nil }
+                            return (type: "bookmark", label: "🔖 Pág. \(loc.pageLabel ?? "\(loc.pageIndex + 1)")", pageIndex: loc.pageIndex)
+                        } + highlights.compactMap { h in
+                            guard let data = h.anchor.data(using: .utf8),
+                                  let loc = try? JSONDecoder().decode(PDFLocation.self, from: data) else { return nil }
+                            return (type: "highlight", label: "🖍️ Pág. \(loc.pageLabel ?? "\(loc.pageIndex + 1)")", pageIndex: loc.pageIndex)
+                        }
                         
-                        Text(String(format: "%.0f%%", progressPercent * 100))
-                            .font(AppTypography.captionBold)
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
-                    }
-                    .padding(.horizontal, AppSpacing.lg)
-                    
-                    ProgressView(value: progressPercent, total: 1.0)
-                        .tint(AppColor.accent(for: theme))
+                        if !savedLocations.isEmpty {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: AppSpacing.xs) {
+                                    ForEach(savedLocations.indices, id: \.self) { idx in
+                                        let item = savedLocations[idx]
+                                        Button {
+                                            if item.pageIndex != currentLocation?.pageIndex {
+                                                lastJumpOriginLocation = currentLocation
+                                                targetLocation = PDFLocation(pageIndex: item.pageIndex, totalPages: totalPages)
+                                            }
+                                        } label: {
+                                            Text(item.label)
+                                                .font(AppTypography.caption)
+                                                .padding(.horizontal, AppSpacing.sm)
+                                                .padding(.vertical, 3)
+                                                .background(item.type == "bookmark" ? AppColor.accent(for: theme).opacity(0.18) : AppColor.surfaceSecondary(for: theme))
+                                                .foregroundStyle(AppColor.textPrimary(for: theme))
+                                                .clipShape(Capsule())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.horizontal, AppSpacing.lg)
+                            }
+                        }
+
+                        HStack {
+                            Button {
+                                goToPageText = "\(pageIndex + 1)"
+                                showGoToPageDialog = true
+                            } label: {
+                                HStack(spacing: AppSpacing.xxs) {
+                                    Text(String(localized: "Página \(pageLabel) de \(totalPages)", comment: "Reader: PDF page progression"))
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Ir a número de página. Página actual \(pageLabel) de \(totalPages)")
+                            
+                            Spacer()
+                            
+                            Button {
+                                goToPageText = "\(pageIndex + 1)"
+                                showGoToPageDialog = true
+                            } label: {
+                                Text(String(format: "%.0f%%", progressPercent * 100))
+                                    .font(AppTypography.captionBold)
+                                    .foregroundStyle(AppColor.accent(for: theme))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Ir a número de página por porcentaje. Progreso actual \(Int(progressPercent * 100))%")
+                        }
                         .padding(.horizontal, AppSpacing.lg)
+                        
+                        ProgressView(value: progressPercent, total: 1.0)
+                            .tint(AppColor.accent(for: theme))
+                            .padding(.horizontal, AppSpacing.lg)
+                    }
+                    .padding(.top, AppSpacing.sm)
+                    .padding(.bottom, safeAreaBottom + AppSpacing.xs)
                 }
-                .padding(.vertical, AppSpacing.md)
                 .background(
                     AppColor.surface(for: theme)
                         .shadow(color: AppShadow.subtle(for: theme).color,
@@ -342,6 +433,18 @@ struct PDFReaderView: View {
                     executeInlineAI(action: pending)
                 }
             }
+        }
+        .alert("Ir a página", isPresented: $showGoToPageDialog) {
+            let totalPages = currentLocation?.totalPages ?? (adapter.document?.pageCount ?? 1)
+            TextField("Número de página (1-\(totalPages))", text: $goToPageText)
+                .keyboardType(.numberPad)
+            Button("Ir") {
+                performPageJump()
+            }
+            Button("Cancelar", role: .cancel) { }
+        } message: {
+            let totalPages = currentLocation?.totalPages ?? (adapter.document?.pageCount ?? 1)
+            Text("Introduce el número de página al que deseas ir (1 a \(totalPages)).")
         }
     }
 
@@ -1342,5 +1445,40 @@ struct PDFReaderView: View {
             .first { $0.isKeyWindow }?
             .safeAreaInsets.top ?? 24
         return max(topInset, 24)
+    }
+
+    private var safeAreaBottom: CGFloat {
+        let bottomInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.bottom ?? 0
+        return max(bottomInset, 16)
+    }
+
+    private func performPageJump() {
+        let raw = goToPageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        
+        let totalPages = currentLocation?.totalPages ?? (adapter.document?.pageCount ?? 1)
+        guard totalPages > 0 else { return }
+        
+        var targetIndex: Int? = nil
+        
+        if raw.hasSuffix("%") {
+            let percentStr = raw.dropLast().trimmingCharacters(in: .whitespaces)
+            if let val = Double(percentStr) {
+                let clampedVal = max(0.0, min(100.0, val))
+                let fraction = clampedVal / 100.0
+                targetIndex = Int(round(fraction * Double(totalPages - 1)))
+            }
+        } else if let pageNum = Int(raw) {
+            targetIndex = max(0, min(pageNum - 1, totalPages - 1))
+        }
+        
+        if let targetIndex, targetIndex != currentLocation?.pageIndex {
+            lastJumpOriginLocation = currentLocation
+            targetLocation = PDFLocation(pageIndex: targetIndex, totalPages: totalPages)
+        }
     }
 }

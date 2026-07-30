@@ -1,4 +1,5 @@
 import SwiftUI
+import ReadiumShared
 
 // MARK: - NotesView
 
@@ -146,12 +147,20 @@ struct NotesView: View {
         let pubTitle = publications.first(where: { $0.id == item.publicationID })?.title ?? "Libro desconocido"
         
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            // Encabezado con el libro, la fecha y el menú de acciones rápidas
+            // Encabezado con el libro, la ubicación/página, la fecha y el menú de acciones rápidas
             HStack {
-                Text(pubTitle)
-                    .font(AppTypography.captionBold)
-                    .foregroundStyle(AppColor.accent(for: theme))
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(pubTitle)
+                        .font(AppTypography.captionBold)
+                        .foregroundStyle(AppColor.accent(for: theme))
+                        .lineLimit(1)
+                    
+                    if let pageText = locationLabel(for: item) {
+                        Text(pageText)
+                            .font(AppTypography.footnote.weight(.semibold))
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                    }
+                }
                 
                 Spacer()
                 
@@ -415,6 +424,28 @@ struct NotesView: View {
         default:
             self.selectedPublication = pub
         }
+    }
+
+    private func locationLabel(for item: AnnotationItem) -> String? {
+        let anchorStr = item.highlight?.anchor ?? item.note?.anchor ?? ""
+        guard let anchorData = anchorStr.data(using: .utf8) else { return nil }
+
+        if let pdfLoc = try? JSONDecoder().decode(PDFLocation.self, from: anchorData) {
+            let label = pdfLoc.pageLabel ?? "\(pdfLoc.pageIndex + 1)"
+            return "Página \(label)"
+        } else if let textLoc = try? JSONDecoder().decode(TextLocation.self, from: anchorData) {
+            return "Párrafo \(textLoc.blockIndex + 1)"
+        } else if let epubLoc = try? JSONDecoder().decode(EPUBLocation.self, from: anchorData) {
+            if let title = epubLoc.locator.title, !title.isEmpty {
+                return title
+            } else if let pos = epubLoc.locator.locations.position {
+                return "Página \(pos)"
+            } else {
+                let pct = (epubLoc.locator.locations.totalProgression ?? 0.0) * 100
+                return String(format: "%.0f%%", pct)
+            }
+        }
+        return nil
     }
 
     // MARK: - Export Logic

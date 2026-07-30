@@ -70,6 +70,20 @@ struct PublicationTypeTests {
         #expect(PublicationType.from(fileExtension: "markdown") == .markdown)
     }
 
+    @Test("Detects pptx and ppt presentation formats from extension")
+    func detectPresentationFormats() {
+        #expect(PublicationType.from(fileExtension: "pptx") == .pptx)
+        #expect(PublicationType.from(fileExtension: "PPTX") == .pptx)
+        #expect(PublicationType.from(fileExtension: "ppt") == .pptx)
+        #expect(PublicationType.from(fileExtension: "PPT") == .pptx)
+    }
+
+    @Test("Validates supportedUTTypes for publication types")
+    func supportedUTTypes() {
+        #expect(!PublicationType.pptx.supportedUTTypes.isEmpty)
+        #expect(!PublicationType.pdf.supportedUTTypes.isEmpty)
+    }
+
     @Test("Returns nil for unknown extension")
     func unknownExtension() {
         #expect(PublicationType.from(fileExtension: "docx") == nil)

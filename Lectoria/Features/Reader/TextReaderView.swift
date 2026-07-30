@@ -90,6 +90,9 @@ struct TextReaderView: View {
     @State private var showTOC = false
     @State private var showSettings = false
     @State private var showSearch = false
+    @State private var showGoToPageDialog = false
+    @State private var goToPageText = ""
+    @State private var lastJumpOriginLocation: TextLocation? = nil
     @State private var tocTab: TOCTab = .outline
 
     // Búsqueda de texto
@@ -321,6 +324,32 @@ struct TextReaderView: View {
             Spacer()
 
             if showUI {
+                // Botón flotante para volver a la ubicación previa tras un salto
+                if let origin = lastJumpOriginLocation, origin.blockIndex != currentLocation?.blockIndex {
+                    Button {
+                        lastJumpOriginLocation = nil
+                        targetLocation = origin
+                    } label: {
+                        HStack(spacing: AppSpacing.xs) {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.subheadline)
+                            Text("Volver al párrafo \(origin.blockIndex + 1)")
+                                .font(AppTypography.captionBold)
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.xs)
+                        .background(AppColor.accent(for: theme))
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                        .shadow(color: AppShadow.medium(for: theme).color,
+                                radius: AppShadow.medium(for: theme).radius,
+                                x: AppShadow.medium(for: theme).x,
+                                y: AppShadow.medium(for: theme).y)
+                    }
+                    .padding(.bottom, AppSpacing.xxs)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 // Barra Inferior (Progreso)
                 VStack(spacing: AppSpacing.xs) {
                     let currentBlockIndex = currentLocation?.blockIndex ?? 0
@@ -328,15 +357,36 @@ struct TextReaderView: View {
                     let progressPercent = totalBlocks > 1 ? Double(currentBlockIndex) / Double(totalBlocks - 1) : 0.0
 
                     HStack {
-                        Text(String(localized: "Progreso: Párrafo \(currentBlockIndex + 1) de \(totalBlocks)", comment: "Reader: Text paragraph progression"))
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                        Button {
+                            goToPageText = "\(currentBlockIndex + 1)"
+                            showGoToPageDialog = true
+                        } label: {
+                            HStack(spacing: AppSpacing.xxs) {
+                                Text(String(localized: "Progreso: Párrafo \(currentBlockIndex + 1) de \(totalBlocks)", comment: "Reader: Text paragraph progression"))
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ir a párrafo")
 
                         Spacer()
 
-                        Text(String(format: "%.0f%%", progressPercent * 100))
-                            .font(AppTypography.captionBold)
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                        Button {
+                            goToPageText = "\(currentBlockIndex + 1)"
+                            showGoToPageDialog = true
+                        } label: {
+                            Text(String(format: "%.0f%%", progressPercent * 100))
+                                .font(AppTypography.captionBold)
+                                .foregroundStyle(AppColor.accent(for: theme))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ir a párrafo por porcentaje")
                     }
                     .padding(.horizontal, AppSpacing.lg)
 
@@ -344,7 +394,8 @@ struct TextReaderView: View {
                         .tint(AppColor.accent(for: theme))
                         .padding(.horizontal, AppSpacing.lg)
                 }
-                .padding(.vertical, AppSpacing.md)
+                .padding(.top, AppSpacing.md)
+                .padding(.bottom, safeAreaBottom + AppSpacing.xs)
                 .background(
                     AppColor.surface(for: theme)
                         .shadow(color: AppShadow.subtle(for: theme).color,
@@ -375,10 +426,20 @@ struct TextReaderView: View {
         }
         .sheet(isPresented: $showConsent) {
             AIConsentView { accepted in
-                if accepted, let pending = pendingAIAction {
+                if accepted, let _ = pendingAIAction {
                     showAIResponse = true
                 }
             }
+        }
+        .alert("Ir a párrafo", isPresented: $showGoToPageDialog) {
+            TextField("Párrafo (1-\(blocks.count))", text: $goToPageText)
+                .keyboardType(.numberPad)
+            Button("Ir") {
+                performTextJump()
+            }
+            Button("Cancelar", role: .cancel) { }
+        } message: {
+            Text("Introduce un número de párrafo (1 a \(blocks.count)) o porcentaje (ej. 50%).")
         }
         .sheet(isPresented: $showAIResponse) {
             if let action = pendingAIAction {
@@ -1266,5 +1327,38 @@ struct TextReaderView: View {
             .first { $0.isKeyWindow }?
             .safeAreaInsets.top ?? 24
         return max(topInset, 24)
+    }
+
+    private var safeAreaBottom: CGFloat {
+        let bottomInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.bottom ?? 0
+        return max(bottomInset, 16)
+    }
+
+    private func performTextJump() {
+        let raw = goToPageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty, !blocks.isEmpty else { return }
+
+        var targetIndex: Int? = nil
+
+        if raw.hasSuffix("%") {
+            let percentStr = raw.dropLast().trimmingCharacters(in: .whitespaces)
+            if let val = Double(percentStr) {
+                let clampedVal = max(0.0, min(100.0, val))
+                let fraction = clampedVal / 100.0
+                targetIndex = Int(round(fraction * Double(blocks.count - 1)))
+            }
+        } else if let num = Int(raw) {
+            targetIndex = max(0, min(num - 1, blocks.count - 1))
+        }
+
+        if let targetIndex, targetIndex != currentLocation?.blockIndex {
+            lastJumpOriginLocation = currentLocation
+            let percentage = Double(targetIndex) / Double(max(1, blocks.count - 1))
+            targetLocation = TextLocation(blockIndex: targetIndex, characterOffset: 0, percentage: percentage)
+        }
     }
 }

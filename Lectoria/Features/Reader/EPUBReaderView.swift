@@ -54,6 +54,9 @@ struct EPUBReaderView: View {
     @State private var showUI = true
     @State private var showTOC = false
     @State private var showSettings = false
+    @State private var showGoToPageDialog = false
+    @State private var goToPageText = ""
+    @State private var lastJumpOriginLocation: EPUBLocation? = nil
 
     // Preferencias del usuario (persistidas o inicializadas por defecto)
     @State private var fontSize: Double = 1.0
@@ -225,21 +228,68 @@ struct EPUBReaderView: View {
             Spacer()
             
             if showUI {
+                // Botón flotante para volver a la ubicación previa tras un salto
+                if let origin = lastJumpOriginLocation, origin != currentLocation {
+                    Button {
+                        lastJumpOriginLocation = nil
+                        targetLocation = origin
+                    } label: {
+                        HStack(spacing: AppSpacing.xs) {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.subheadline)
+                            Text("Volver a la ubicación anterior")
+                                .font(AppTypography.captionBold)
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.xs)
+                        .background(AppColor.accent(for: theme))
+                        .foregroundStyle(.white)
+                        .clipShape(Capsule())
+                        .shadow(color: AppShadow.medium(for: theme).color,
+                                radius: AppShadow.medium(for: theme).radius,
+                                x: AppShadow.medium(for: theme).x,
+                                y: AppShadow.medium(for: theme).y)
+                    }
+                    .padding(.bottom, AppSpacing.xxs)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 // Barra Inferior (Progreso)
                 VStack(spacing: AppSpacing.sm) {
                     let progressPercent = currentLocation?.locator.locations.totalProgression ?? 0.0
                     
                     HStack {
-                        Text(currentLocation?.locator.title ?? "Capítulo")
-                            .font(AppTypography.caption)
-                            .foregroundStyle(AppColor.textSecondary(for: theme))
-                            .lineLimit(1)
+                        Button {
+                            goToPageText = String(format: "%.0f%%", progressPercent * 100)
+                            showGoToPageDialog = true
+                        } label: {
+                            HStack(spacing: AppSpacing.xxs) {
+                                Text(currentLocation?.locator.title ?? "Capítulo")
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ir a página o porcentaje")
                         
                         Spacer()
                         
-                        Text(String(format: "%.0f%%", progressPercent * 100))
-                            .font(AppTypography.captionBold)
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                        Button {
+                            goToPageText = String(format: "%.0f%%", progressPercent * 100)
+                            showGoToPageDialog = true
+                        } label: {
+                            Text(String(format: "%.0f%%", progressPercent * 100))
+                                .font(AppTypography.captionBold)
+                                .foregroundStyle(AppColor.accent(for: theme))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ir a página o porcentaje")
                     }
                     .padding(.horizontal, AppSpacing.lg)
                     
@@ -247,7 +297,8 @@ struct EPUBReaderView: View {
                         .tint(AppColor.accent(for: theme))
                         .padding(.horizontal, AppSpacing.lg)
                 }
-                .padding(.vertical, AppSpacing.md)
+                .padding(.top, AppSpacing.md)
+                .padding(.bottom, safeAreaBottom + AppSpacing.xs)
                 .background(
                     AppColor.surface(for: theme)
                         .shadow(color: AppShadow.subtle(for: theme).color,
@@ -279,6 +330,16 @@ struct EPUBReaderView: View {
                     executeInlineAI(action: pending)
                 }
             }
+        }
+        .alert("Ir a página", isPresented: $showGoToPageDialog) {
+            TextField("Número de página o %", text: $goToPageText)
+                .keyboardType(.numberPad)
+            Button("Ir") {
+                performEPUBJump()
+            }
+            Button("Cancelar", role: .cancel) { }
+        } message: {
+            Text("Introduce un número de página o un porcentaje de avance.")
         }
     }
 
@@ -490,6 +551,39 @@ struct EPUBReaderView: View {
             .first { $0.isKeyWindow }?
             .safeAreaInsets.top ?? 24
         return max(topInset, 24)
+    }
+
+    private var safeAreaBottom: CGFloat {
+        let bottomInset = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.bottom ?? 0
+        return max(bottomInset, 16)
+    }
+
+    private func performEPUBJump() {
+        let raw = goToPageText.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "%", with: "")
+        guard let val = Double(raw) else { return }
+        let clamped = max(0.0, min(100.0, val)) / 100.0
+        if let currentLoc = currentLocation {
+            lastJumpOriginLocation = currentLocation
+            var loc = currentLoc.locator
+            // Actualizar progresión si la estructura de Locator lo permite
+            loc = Locator(
+                href: loc.href,
+                mediaType: loc.mediaType,
+                title: loc.title,
+                locations: Locator.Locations(
+                    fragments: loc.locations.fragments,
+                    progression: loc.locations.progression,
+                    totalProgression: clamped,
+                    position: loc.locations.position
+                ),
+                text: loc.text
+            )
+            targetLocation = EPUBLocation(locator: loc)
+        }
     }
 
     // MARK: - Annotation Helpers

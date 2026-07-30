@@ -15,7 +15,7 @@ public enum ImportError: LocalizedError, Sendable {
         case .duplicateDocument(let title):
             return String(localized: "El documento '\(title)' ya existe en tu biblioteca.", comment: "Error message")
         case .unsupportedFormat(let ext):
-            return String(localized: "El formato de archivo .\(ext) no es compatible. Lectoria soporta EPUB, PDF, PPTX, TXT y Markdown.", comment: "Error message")
+            return String(localized: "El formato de archivo .\(ext) no es compatible. Lectoria soporta EPUB, PDF, PPTX, PPT, TXT y Markdown.", comment: "Error message")
         case .securityAccessFailed:
             return String(localized: "No se pudo obtener acceso de seguridad al archivo seleccionado.", comment: "Error message")
         case .fileAccessFailed(let msg):
@@ -73,7 +73,7 @@ public final class ImportService: Sendable {
             case .allowed:
                 break
             case .requiresPremium:
-                throw ImportError.limitExceeded(String(localized: "El formato \(publicationType.displayName) está reservado para el plan Premium. Suscríbete para importar documentos en PDF, PPTX y Markdown.", comment: "Format restriction error"))
+                throw ImportError.limitExceeded(String(localized: "El formato \(publicationType.displayName) está reservado para el plan Premium. Suscríbete para importar documentos en PDF, PPTX, PPT y Markdown.", comment: "Format restriction error"))
             case .limitReached(let msg):
                 throw ImportError.limitExceeded(msg)
             case .requiresCompatibleDevice:

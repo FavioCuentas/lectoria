@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 // MARK: - PublicationType
 
@@ -54,6 +55,24 @@ public enum PublicationType: String, Codable, Sendable, CaseIterable, Identifiab
         case .markdown: ["md", "markdown"]
         case .pastedText: []
         case .pptx: ["pptx", "ppt"]
+        }
+    }
+
+    /// Tipos UniformTypeIdentifiers (UTType) correspondientes.
+    public var supportedUTTypes: [UTType] {
+        switch self {
+        case .epub:
+            [UTType(filenameExtension: "epub")].compactMap { $0 }
+        case .pdf:
+            [.pdf]
+        case .txt:
+            [.plainText]
+        case .markdown:
+            [UTType(filenameExtension: "md"), UTType(filenameExtension: "markdown")].compactMap { $0 }
+        case .pastedText:
+            []
+        case .pptx:
+            [UTType(filenameExtension: "pptx"), UTType(filenameExtension: "ppt"), UTType.presentation].compactMap { $0 }
         }
     }
 
