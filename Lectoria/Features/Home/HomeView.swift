@@ -194,11 +194,13 @@ struct HomeView: View {
                                     .lineLimit(1)
                             }
                             
-                            HStack(spacing: AppSpacing.sm) {
+                            HStack(spacing: AppSpacing.xs) {
                                 ProgressPill(progress: lastReadProgress, compact: true)
-                                Text("\(Int(lastReadProgress * 100))% leído")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                                if lastReadProgress < 1.0 {
+                                    Text("leído")
+                                        .font(AppTypography.caption)
+                                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                                }
                             }
                             .padding(.top, 2)
                         }

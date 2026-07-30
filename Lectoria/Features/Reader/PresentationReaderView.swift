@@ -20,50 +20,69 @@ struct PresentationReaderView: View {
     var body: some View {
         let theme = themeManager.currentTheme
 
-        ZStack {
-            AppColor.background(for: theme)
-                .ignoresSafeArea()
-
-            if let fileURL, errorMessage == nil {
-                QuickLookPreviewWrapper(fileURL: fileURL)
-                    .ignoresSafeArea(edges: .bottom)
-            } else if isLoading {
-                VStack(spacing: AppSpacing.md) {
-                    ProgressView()
-                        .scaleEffect(1.2)
-                        .tint(AppColor.accent(for: theme))
-                    Text(String(localized: "Cargando presentación…", comment: "Reader: loading presentation"))
-                        .font(AppTypography.body)
-                        .foregroundStyle(AppColor.textSecondary(for: theme))
-                }
-            } else if let errorMessage {
-                errorView(message: errorMessage, theme: theme)
-            }
-        }
-        .navigationTitle(record.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
+        VStack(spacing: 0) {
+            // Barra de herramientas superior personalizada
+            HStack(spacing: AppSpacing.sm) {
                 Button {
                     dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .frame(width: 36, height: 36)
+                        .background(AppColor.surfaceSecondary(for: theme))
+                        .clipShape(Circle())
                 }
-            }
+                .accessibilityLabel("Volver")
 
-            ToolbarItem(placement: .topBarTrailing) {
+                Text(record.title)
+                    .font(AppTypography.bodyBold)
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+                    .lineLimit(1)
+
+                Spacer()
+
                 if let fileURL {
                     ShareLink(item: fileURL) {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.body)
-                            .foregroundStyle(AppColor.accent(for: theme))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                            .frame(width: 36, height: 36)
+                            .background(AppColor.surfaceSecondary(for: theme))
+                            .clipShape(Circle())
                     }
                 }
             }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.xs)
+            .background(AppColor.surface(for: theme))
+
+            Divider()
+                .background(AppColor.border(for: theme))
+
+            // Visor principal
+            ZStack {
+                AppColor.background(for: theme)
+                    .ignoresSafeArea()
+
+                if let fileURL, errorMessage == nil {
+                    QuickLookPreviewWrapper(fileURL: fileURL)
+                } else if isLoading {
+                    VStack(spacing: AppSpacing.md) {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                            .tint(AppColor.accent(for: theme))
+                        Text(String(localized: "Cargando presentación…", comment: "Reader: loading presentation"))
+                            .font(AppTypography.body)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                    }
+                } else if let errorMessage {
+                    errorView(message: errorMessage, theme: theme)
+                }
+            }
         }
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
         .task {
             await resolveAndPrepareFile()
         }
