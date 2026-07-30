@@ -187,11 +187,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
             willAutoRenew: active,
             lastVerifiedAt: Date()
         )
-        if active {
-            try? await repository.saveEntitlement(entitlement)
-        } else {
-            try? await repository.deleteEntitlement(id: entitlement.id)
-        }
+        try? await repository.saveEntitlement(entitlement)
         await MainActor.run {
             self.hasActiveSubscription = active
             self.activeEntitlement = active ? entitlement : nil
