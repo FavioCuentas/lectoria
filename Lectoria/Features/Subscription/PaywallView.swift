@@ -543,14 +543,8 @@ struct PaywallView: View {
     private func simulatePremiumPurchase() {
         isLoading = true
         Task {
-            if let mock = dependencies.subscriptionService as? MockSubscriptionService {
-                mock.hasActiveSubscription = true
-                mock.activeEntitlement = SubscriptionEntitlement(
-                    productID: "com.lectoria.premium.yearly",
-                    status: "active"
-                )
-            }
-            try? await Task.sleep(for: .seconds(1))
+            await dependencies.subscriptionService.simulatePremiumSubscription(active: true)
+            try? await Task.sleep(for: .seconds(0.5))
             await MainActor.run {
                 self.isLoading = false
                 dismiss()

@@ -101,12 +101,10 @@ struct ProfileView: View {
                     let isPremium = dependencies.subscriptionService.hasActiveSubscription
                     SettingsRow(
                         icon: "crown",
-                        title: String(localized: "Plan", comment: "Profile: subscription plan"),
-                        variant: .value(isPremium ? String(localized: "Premium", comment: "Profile: premium plan") : String(localized: "Gratuito", comment: "Profile: free plan"))
+                        title: String(localized: "Plan de suscripción", comment: "Profile: subscription plan"),
+                        variant: .value(isPremium ? String(localized: "Premium (Simulado)", comment: "Profile: premium plan") : String(localized: "Gratuito", comment: "Profile: free plan"))
                     ) {
-                        if !isPremium {
-                            showPaywall = true
-                        }
+                        showPaywall = true
                     }
 
                     Divider()

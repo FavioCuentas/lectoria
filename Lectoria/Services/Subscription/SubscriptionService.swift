@@ -19,4 +19,7 @@ public protocol SubscriptionService: AnyObject, Sendable {
     
     /// Restaura transacciones de compra anteriores.
     func restorePurchases() async throws
+    
+    /// Simula o conmuta el acceso al plan Premium para pruebas y evaluación.
+    func simulatePremiumSubscription(active: Bool) async
 }

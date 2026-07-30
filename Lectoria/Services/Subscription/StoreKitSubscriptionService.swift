@@ -177,6 +177,27 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
         }
     }
 
+    /// Simula o conmuta el estado Premium en tiempo de desarrollo/simulador
+    public func simulatePremiumSubscription(active: Bool = true) async {
+        let entitlement = SubscriptionEntitlement(
+            productID: active ? Self.yearlyProductID : "free",
+            status: active ? "active" : "expired",
+            expirationDate: active ? Date().addingTimeInterval(365 * 24 * 3600) : Date().addingTimeInterval(-3600),
+            isInGracePeriod: false,
+            willAutoRenew: active,
+            lastVerifiedAt: Date()
+        )
+        if active {
+            try? await repository.saveEntitlement(entitlement)
+        } else {
+            try? await repository.deleteEntitlement(id: entitlement.id)
+        }
+        await MainActor.run {
+            self.hasActiveSubscription = active
+            self.activeEntitlement = active ? entitlement : nil
+        }
+    }
+
     /// Verifica la firma criptográfica del resultado de transacción
     private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {

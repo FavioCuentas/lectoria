@@ -58,7 +58,7 @@ public struct Entitlements: Equatable, Sendable {
             return Entitlements(
                 tier: .free,
                 maxActiveDocuments: 5,
-                allowedFormats: [.epub, .txt, .pastedText],
+                allowedFormats: Set(PublicationType.allCases),
                 canUseAdvancedAnnotations: true,
                 canUseAdvancedExport: false,
                 canUseAdvancedStatistics: false,

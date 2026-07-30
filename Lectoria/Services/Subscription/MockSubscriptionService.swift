@@ -58,6 +58,17 @@ public final class MockSubscriptionService: SubscriptionService, PurchaseService
         // No-op for mock
     }
 
+    public func simulatePremiumSubscription(active: Bool = true) async {
+        await MainActor.run {
+            self.hasActiveSubscription = active
+            self.activeEntitlement = active ? SubscriptionEntitlement(
+                productID: "com.lectoria.premium.yearly",
+                status: "active",
+                expirationDate: Calendar.current.date(byAdding: .year, value: 1, to: Date())
+            ) : nil
+        }
+    }
+
     public func observeTransactionUpdates() async {
         // No-op for mock
     }
