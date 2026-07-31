@@ -119,11 +119,6 @@ struct SplashScreenView: View {
                 Text("Lectoria")
                     .font(.system(size: 28, weight: .bold, design: .serif))
                     .foregroundStyle(colorScheme == .dark ? .white : Color(red: 0.15, green: 0.15, blue: 0.20))
-                
-                Text("Lector inteligente con IA")
-                    .font(AppTypography.caption)
-                    .foregroundStyle(colorScheme == .dark ? .gray : Color(red: 0.50, green: 0.50, blue: 0.55))
-                    .padding(.top, 2)
             }
         }
     }
