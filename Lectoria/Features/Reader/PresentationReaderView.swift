@@ -34,6 +34,11 @@ struct PresentationReaderView: View {
     // Sistema de notas y anotaciones
     @State private var notes: [Note] = []
     @State private var annotationPins: [SlideAnnotationPin] = []
+    @State private var presentationAnnotations: [PresentationAnnotation] = []
+    @State private var activeSelectedText: String? = nil
+    @State private var showAnnotationEditor = false
+    @State private var textToTranslate: String? = nil
+    @State private var showTranslationSheet = false
 
     var body: some View {
         let theme = themeManager.currentTheme
@@ -117,6 +122,7 @@ struct PresentationReaderView: View {
                     // Miniaturas verticales para pantallas anchas (iPad / Mac)
                     if showThumbnails && isWideScreen && !isFullscreen {
                         PresentationThumbnailStripView(
+                            pdfDocument: pdfDocument,
                             totalSlides: totalSlides,
                             currentSlideIndex: $currentSlideIndex,
                             isVertical: true,
@@ -136,7 +142,22 @@ struct PresentationReaderView: View {
 
                         if let pdfDoc = pdfDocument {
                             // Ruta B: PDFKit derivado de alta fidelidad
-                            PDFPresentationPreviewWrapper(pdfDocument: pdfDoc, pageIndex: currentSlideIndex)
+                            PDFPresentationPreviewWrapper(
+                                pdfDocument: pdfDoc,
+                                pageIndex: $currentSlideIndex,
+                                annotations: presentationAnnotations,
+                                onTextSelected: { text, bounds, slideIdx in
+                                    activeSelectedText = text
+                                },
+                                onAddNoteRequest: { text, slideIdx in
+                                    activeSelectedText = text
+                                    showAnnotationEditor = true
+                                },
+                                onTranslateRequest: { text in
+                                    textToTranslate = text
+                                    showTranslationSheet = true
+                                }
+                            )
                                 .onTapGesture {
                                     withAnimation(.easeInOut(duration: 0.2)) {
                                         isFullscreen.toggle()
@@ -208,6 +229,7 @@ struct PresentationReaderView: View {
             // 3. Miniaturas horizontales para iPhone (cuando no es pantalla ancha y está activo)
             if showThumbnails && !isFullscreen {
                 PresentationThumbnailStripView(
+                    pdfDocument: pdfDocument,
                     totalSlides: totalSlides,
                     currentSlideIndex: $currentSlideIndex,
                     isVertical: false,
@@ -312,6 +334,30 @@ struct PresentationReaderView: View {
         }
         .task {
             await resolveAndPrepareFile()
+        }
+        .sheet(isPresented: $showAnnotationEditor) {
+            if let selectedText = activeSelectedText {
+                PresentationAnnotationEditorSheet(
+                    selectedText: selectedText,
+                    slideIndex: currentSlideIndex,
+                    documentID: record.id.uuidString,
+                    onSave: { newAnn in
+                        presentationAnnotations.append(newAnn)
+                        let newNote = Note(
+                            publicationID: record.id,
+                            anchor: "slide_\(currentSlideIndex + 1)",
+                            body: "“\(newAnn.selectedText)”\n\(newAnn.userComment ?? "")",
+                            tags: [newAnn.categoryID ?? "Importante"]
+                        )
+                        notes.append(newNote)
+                    }
+                )
+            }
+        }
+        .sheet(isPresented: $showTranslationSheet) {
+            if let textToTranslate {
+                TranslationSheetView(originalText: textToTranslate)
+            }
         }
     }
 
