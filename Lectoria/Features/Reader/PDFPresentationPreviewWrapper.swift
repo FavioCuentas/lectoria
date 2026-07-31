@@ -58,7 +58,7 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     final class Coordinator: NSObject {
         var parent: PDFPresentationPreviewWrapper
         var isUpdatingFromPDFView = false
-        private var notificationObservers: [NSObjectProtocol] = []
+        nonisolated(unsafe) private var notificationObservers: [any NSObjectProtocol] = []
 
         init(_ parent: PDFPresentationPreviewWrapper) {
             self.parent = parent
