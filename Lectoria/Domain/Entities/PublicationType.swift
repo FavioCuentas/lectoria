@@ -54,7 +54,7 @@ public enum PublicationType: String, Codable, Sendable, CaseIterable, Identifiab
         case .txt: ["txt", "text"]
         case .markdown: ["md", "markdown"]
         case .pastedText: []
-        case .pptx: ["pptx", "ppt"]
+        case .pptx: ["pptx", "ppt", "pps", "ppsx", "key", "odp"]
         }
     }
 
@@ -72,7 +72,15 @@ public enum PublicationType: String, Codable, Sendable, CaseIterable, Identifiab
         case .pastedText:
             []
         case .pptx:
-            [UTType(filenameExtension: "pptx"), UTType(filenameExtension: "ppt"), UTType.presentation].compactMap { $0 }
+            [
+                UTType(filenameExtension: "pptx"),
+                UTType(filenameExtension: "ppt"),
+                UTType(filenameExtension: "pps"),
+                UTType(filenameExtension: "ppsx"),
+                UTType(filenameExtension: "key"),
+                UTType(filenameExtension: "odp"),
+                UTType.presentation
+            ].compactMap { $0 }
         }
     }
 
