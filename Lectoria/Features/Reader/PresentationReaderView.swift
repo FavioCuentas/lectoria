@@ -213,27 +213,16 @@ struct PresentationReaderView: View {
                 if !isFullscreen {
                     PresentationNotesPanelView(
                         slideIndex: currentSlideIndex,
-                        notes: notes,
-                        annotations: presentationAnnotations,
-                        onAddNote: { category, comment in
-                            let newAnn = PresentationAnnotation(
-                                documentID: record.id.uuidString,
-                                slideIndex: currentSlideIndex,
-                                selectedText: comment,
-                                categoryID: category,
-                                userComment: comment
-                            )
-                            presentationAnnotations.append(newAnn)
+                        totalSlides: totalSlides,
+                        existingNotes: notes,
+                        onSaveNote: { text, category in
                             let newNote = Note(
                                 publicationID: record.id,
                                 anchor: "slide_\(currentSlideIndex + 1)",
-                                body: comment,
-                                tags: [category]
+                                body: text,
+                                tags: [category.rawValue]
                             )
                             notes.append(newNote)
-                        },
-                        onDeleteAnnotation: { annId in
-                            presentationAnnotations.removeAll { $0.id == annId }
                         }
                     )
                 }
