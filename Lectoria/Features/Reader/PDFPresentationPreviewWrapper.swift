@@ -12,6 +12,7 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     @Binding var pageIndex: Int
     let annotations: [PresentationAnnotation]
     let onTextSelected: ((String, CGRect, Int) -> Void)?
+    let onSelectionCleared: (() -> Void)?
     let onAddNoteRequest: ((String, Int) -> Void)?
     let onTranslateRequest: ((String) -> Void)?
 
@@ -110,13 +111,16 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
                 queue: .main
             ) { [weak self, weak pdfView] _ in
                 Task { @MainActor [weak self, weak pdfView] in
-                    guard let self = self, let pdfView = pdfView, let selection = pdfView.currentSelection,
-                          let text = selection.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                          let page = pdfView.currentPage else { return }
-
-                    let bounds = selection.bounds(for: page)
-                    let slideIdx = pdfView.document?.index(for: page) ?? 0
-                    self.parent.onTextSelected?(text, bounds, slideIdx)
+                    guard let self = self, let pdfView = pdfView else { return }
+                    if let selection = pdfView.currentSelection,
+                       let text = selection.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                       let page = pdfView.currentPage {
+                        let bounds = selection.bounds(for: page)
+                        let slideIdx = pdfView.document?.index(for: page) ?? 0
+                        self.parent.onTextSelected?(text, bounds, slideIdx)
+                    } else {
+                        self.parent.onSelectionCleared?()
+                    }
                 }
             }
 
