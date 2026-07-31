@@ -221,6 +221,7 @@ struct HomeView: View {
                             radius: AppShadow.subtle(for: theme).radius,
                             x: AppShadow.subtle(for: theme).x,
                             y: AppShadow.subtle(for: theme).y)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -307,6 +308,7 @@ struct HomeView: View {
                 .padding(.vertical, AppSpacing.md)
                 .background(AppColor.accent(for: theme))
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+                .contentShape(Rectangle())
             }
 
             Button {
@@ -327,6 +329,7 @@ struct HomeView: View {
                     RoundedRectangle(cornerRadius: AppRadius.md)
                         .strokeBorder(AppColor.border(for: theme), lineWidth: 1)
                 )
+                .contentShape(Rectangle())
             }
         }
         .buttonStyle(.plain)

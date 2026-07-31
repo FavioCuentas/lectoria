@@ -45,6 +45,7 @@ struct PrimaryButton: View {
             .background(AppColor.accent(for: themeManager.currentTheme))
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+            .contentShape(Rectangle())
         }
         .disabled(isLoading)
         .opacity(isLoading ? 0.8 : 1.0)
