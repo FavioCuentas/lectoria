@@ -127,7 +127,7 @@ private struct RealThumbnailView: View {
                     )
             }
         }
-        .task(id: pageIndex) {
+        .task(id: pdfDocument) {
             await loadThumbnail()
         }
     }

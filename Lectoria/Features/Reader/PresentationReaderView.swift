@@ -226,8 +226,8 @@ struct PresentationReaderView: View {
                 }
             }
 
-            // 3. Miniaturas horizontales para iPhone (cuando no es pantalla ancha y está activo)
-            if showThumbnails && !isFullscreen {
+            // 3. Miniaturas horizontales para iPhone (únicamente cuando NO es pantalla ancha y está activo)
+            if showThumbnails && !isWideScreen && !isFullscreen {
                 PresentationThumbnailStripView(
                     pdfDocument: pdfDocument,
                     totalSlides: totalSlides,

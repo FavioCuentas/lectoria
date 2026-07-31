@@ -27,6 +27,17 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
         pdfView.backgroundColor = .clear
         pdfView.document = pdfDocument
 
+        let addNoteItem = UIMenuItem(title: NSLocalizedString("Añadir nota", comment: "Add note menu item"), action: #selector(CustomPDFView.addNoteAction(_:)))
+        UIMenuController.shared.menuItems = [addNoteItem]
+
+        pdfView.onAddNote = {
+            if let selection = pdfView.currentSelection, let text = selection.string,
+               let page = pdfView.currentPage {
+                let slideIdx = pdfDocument.index(for: page)
+                onAddNoteRequest?(text, slideIdx)
+            }
+        }
+
         context.coordinator.attach(to: pdfView)
 
         if let page = pdfDocument.page(at: pageIndex) {
@@ -152,10 +163,16 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
 // MARK: - CustomPDFView
 
 private class CustomPDFView: PDFView {
+    var onAddNote: (() -> Void)?
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        if action == #selector(copy(_:)) {
+        if action == #selector(copy(_:)) || action == #selector(addNoteAction(_:)) {
             return true
         }
         return super.canPerformAction(action, withSender: sender)
+    }
+
+    @objc private func addNoteAction(_ sender: Any?) {
+        onAddNote?()
     }
 }
