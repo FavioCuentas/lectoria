@@ -213,51 +213,31 @@ struct PaywallView: View {
     // MARK: - Pricing Section (StoreKit 2)
 
     private func pricingSection(theme: AppTheme) -> some View {
-        VStack(spacing: AppSpacing.md) {
+        VStack(spacing: AppSpacing.sm) {
             ForEach(products) { product in
                 let isSelected = selectedProduct?.id == product.id
                 let isLifetime = product.id.contains("lifetime")
-                let isFounder = product.id.contains("founder")
 
                 Button {
                     selectedProduct = product
                 } label: {
-                    HStack {
-                        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                            HStack(spacing: AppSpacing.xs) {
-                                Text(product.displayName)
-                                    .font(AppTypography.bodyBold)
-                                    .foregroundStyle(AppColor.textPrimary(for: theme))
-
-                                if isLifetime {
-                                    Text("Pago único • 250 cupos", comment: "Badge lifetime")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, AppSpacing.xs)
-                                        .padding(.vertical, 2)
-                                        .background(AppColor.accent(for: theme))
-                                        .clipShape(Capsule())
-                                } else if isFounder {
-                                    Text("Oferta Fundador • 1.000 cupos", comment: "Badge founder")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, AppSpacing.xs)
-                                        .padding(.vertical, 2)
-                                        .background(Color.orange)
-                                        .clipShape(Capsule())
-                                }
-                            }
+                    HStack(alignment: .center) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(product.displayName)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(AppColor.textPrimary(for: theme))
 
                             Text(product.description)
-                                .font(AppTypography.caption)
+                                .font(.system(size: 12))
                                 .foregroundStyle(AppColor.textSecondary(for: theme))
+                                .lineLimit(2)
                         }
 
                         Spacer()
 
                         VStack(alignment: .trailing, spacing: 2) {
                             Text(product.displayPrice)
-                                .font(AppTypography.bodyBold)
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(AppColor.textPrimary(for: theme))
 
                             if !isLifetime {
@@ -269,13 +249,14 @@ struct PaywallView: View {
                     }
                     .padding(AppSpacing.md)
                     .background(
-                        RoundedRectangle(cornerRadius: AppRadius.sm)
+                        RoundedRectangle(cornerRadius: AppRadius.md)
                             .stroke(
-                                isSelected ? AppColor.accent(for: theme) : AppColor.accent(for: theme).opacity(0.15),
+                                isSelected ? AppColor.accent(for: theme) : AppColor.border(for: theme),
                                 lineWidth: isSelected ? 2 : 1
                             )
                     )
-                    .background(AppColor.surface(for: theme).opacity(isSelected ? 0.5 : 0.0))
+                    .background(AppColor.surface(for: theme))
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
                 }
                 .buttonStyle(.plain)
             }
@@ -285,81 +266,72 @@ struct PaywallView: View {
     }
 
     private func fallbackPricingSection(theme: AppTheme) -> some View {
-        VStack(spacing: AppSpacing.md) {
+        VStack(spacing: AppSpacing.sm) {
             // Opción 1: Premium Fundador ($4.99/año)
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: AppSpacing.xs) {
-                            Text("Premium Fundador")
-                                .font(AppTypography.bodyBold)
-                                .foregroundStyle(AppColor.textPrimary(for: theme))
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Premium Fundador")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(AppColor.textPrimary(for: theme))
 
-                            Text("Primeros 1.000 compradores")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, AppSpacing.xs)
-                                .padding(.vertical, 2)
-                                .background(Color.orange)
-                                .clipShape(Capsule())
-                        }
                         Text("Acceso ilimitado por 12 meses con 7 días de prueba")
-                            .font(AppTypography.caption)
+                            .font(.system(size: 12))
                             .foregroundStyle(AppColor.textSecondary(for: theme))
                     }
+
                     Spacer()
+
                     Text("USD $4.99 / año")
-                        .font(AppTypography.bodyBold)
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(AppColor.textPrimary(for: theme))
                 }
             }
             .padding(AppSpacing.md)
             .background(
-                RoundedRectangle(cornerRadius: AppRadius.sm)
-                    .stroke(AppColor.accent(for: theme), lineWidth: 2)
+                RoundedRectangle(cornerRadius: AppRadius.md)
+                    .stroke(AppColor.accent(for: theme), lineWidth: 1.5)
             )
             .background(AppColor.surface(for: theme))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
 
             // Opción 2: Premium Lifetime ($19.99)
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: AppSpacing.xs) {
-                            Text("Premium De por Vida")
-                                .font(AppTypography.bodyBold)
-                                .foregroundStyle(AppColor.textPrimary(for: theme))
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Premium De por Vida")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(AppColor.textPrimary(for: theme))
 
-                            Text("Pago único • 250 cupos")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, AppSpacing.xs)
-                                .padding(.vertical, 2)
-                                .background(AppColor.accent(for: theme))
-                                .clipShape(Capsule())
-                        }
                         Text("Licencia permanente para funciones principales")
-                            .font(AppTypography.caption)
+                            .font(.system(size: 12))
                             .foregroundStyle(AppColor.textSecondary(for: theme))
                     }
+
                     Spacer()
+
                     Text("USD $19.99")
-                        .font(AppTypography.bodyBold)
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(AppColor.textPrimary(for: theme))
                 }
             }
             .padding(AppSpacing.md)
             .background(AppColor.surface(for: theme))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.md)
+                    .stroke(AppColor.border(for: theme), lineWidth: 1)
+            )
 
             Button(String(localized: "Simular suscripción Premium", comment: "Paywall: simulate action")) {
                 simulatePremiumPurchase()
             }
-            .font(AppTypography.bodyBold)
+            .font(.system(size: 15, weight: .bold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 48)
             .background(AppColor.accent(for: theme))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
         }
     }
 
@@ -374,12 +346,13 @@ struct PaywallView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("¿Perteneces a una institución educativa?", comment: "Institutional prompt title")
-                        .font(AppTypography.caption.weight(.bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(AppColor.textPrimary(for: theme))
                     Text("Accede gratis con tu correo o código institucional", comment: "Institutional prompt subtitle")
                         .font(.system(size: 11))
                         .foregroundStyle(AppColor.textSecondary(for: theme))
                 }
+
                 Spacer()
 
                 Image(systemName: "chevron.right")
@@ -388,9 +361,9 @@ struct PaywallView: View {
             }
             .padding(AppSpacing.md)
             .background(AppColor.surface(for: theme))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
             .overlay(
-                RoundedRectangle(cornerRadius: AppRadius.sm)
+                RoundedRectangle(cornerRadius: AppRadius.md)
                     .strokeBorder(AppColor.accent(for: theme).opacity(0.3), lineWidth: 1)
             )
         }
