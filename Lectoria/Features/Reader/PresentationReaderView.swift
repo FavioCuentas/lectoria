@@ -123,6 +123,7 @@ struct PresentationReaderView: View {
                     if showThumbnails && isWideScreen && !isFullscreen {
                         PresentationThumbnailStripView(
                             pdfDocument: pdfDocument,
+                            fileURL: fileURL,
                             totalSlides: totalSlides,
                             currentSlideIndex: $currentSlideIndex,
                             isVertical: true,
@@ -231,6 +232,7 @@ struct PresentationReaderView: View {
 
                         PresentationThumbnailStripView(
                             pdfDocument: pdfDocument,
+                            fileURL: fileURL,
                             totalSlides: totalSlides,
                             currentSlideIndex: $currentSlideIndex,
                             isVertical: true,

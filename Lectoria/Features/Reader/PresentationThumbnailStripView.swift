@@ -1,20 +1,38 @@
 import SwiftUI
 import PDFKit
+import QuickLookThumbnailing
 
 // MARK: - PresentationThumbnailStripView
 
 /// Tira navegadora de miniaturas de diapositivas adaptativa inspirada en la interfaz de Apple Keynote.
 ///
-/// Genera miniaturas vectoriales reales asíncronas vía `PDFDocument` y `PresentationCacheManager`,
+/// Genera miniaturas vectoriales reales asíncronas vía `PDFDocument`, `QLThumbnailGenerator` y `PresentationCacheManager`,
 /// resalta la diapositiva activa y realiza autoscroll suave al cambiar de slide.
 struct PresentationThumbnailStripView: View {
     let pdfDocument: PDFDocument?
+    let fileURL: URL?
     let totalSlides: Int
     @Binding var currentSlideIndex: Int
     let isVertical: Bool
     let onSelectSlide: (Int) -> Void
 
     @Environment(ThemeManager.self) private var themeManager
+
+    init(
+        pdfDocument: PDFDocument? = nil,
+        fileURL: URL? = nil,
+        totalSlides: Int,
+        currentSlideIndex: Binding<Int>,
+        isVertical: Bool,
+        onSelectSlide: @escaping (Int) -> Void
+    ) {
+        self.pdfDocument = pdfDocument
+        self.fileURL = fileURL
+        self.totalSlides = totalSlides
+        self._currentSlideIndex = currentSlideIndex
+        self.isVertical = isVertical
+        self.onSelectSlide = onSelectSlide
+    }
 
     var body: some View {
         let theme = themeManager.currentTheme
@@ -76,7 +94,7 @@ struct PresentationThumbnailStripView: View {
             VStack(spacing: 2) {
                 ZStack(alignment: .bottomTrailing) {
                     // Miniatura real renderizada o placeholder visual
-                    RealThumbnailView(pdfDocument: pdfDocument, pageIndex: index)
+                    RealThumbnailView(pdfDocument: pdfDocument, fileURL: fileURL, pageIndex: index)
                         .frame(width: isVertical ? 84 : 76, height: isVertical ? 50 : 46)
                         .clipShape(RoundedRectangle(cornerRadius: AppRadius.xs))
 
@@ -109,6 +127,7 @@ struct PresentationThumbnailStripView: View {
 /// Genera y muestra la miniatura vectorial real de la diapositiva en segundo plano utilizando `PresentationCacheManager`.
 private struct RealThumbnailView: View {
     let pdfDocument: PDFDocument?
+    let fileURL: URL?
     let pageIndex: Int
 
     @State private var thumbnailImage: UIImage? = nil
@@ -127,14 +146,20 @@ private struct RealThumbnailView: View {
                     )
             }
         }
+        .task(id: pageIndex) {
+            await loadThumbnail()
+        }
         .task(id: pdfDocument) {
+            await loadThumbnail()
+        }
+        .task(id: fileURL) {
             await loadThumbnail()
         }
     }
 
     private func loadThumbnail() async {
-        guard let doc = pdfDocument else { return }
-        let cacheKey = "slide_thumb_\(doc.documentURL?.lastPathComponent ?? "doc")_\(pageIndex)"
+        let docKey = pdfDocument?.documentURL?.lastPathComponent ?? (fileURL?.lastPathComponent ?? "doc")
+        let cacheKey = "slide_thumb_\(docKey)_\(pageIndex)"
 
         if let cached = PresentationCacheManager.shared.cachedThumbnail(for: cacheKey) {
             self.thumbnailImage = cached
@@ -142,9 +167,22 @@ private struct RealThumbnailView: View {
         }
 
         let size = CGSize(width: 160, height: 100)
-        guard let page = doc.page(at: pageIndex) else { return }
-        let image = page.thumbnail(of: size, for: .mediaBox)
-        PresentationCacheManager.shared.cacheThumbnail(image, for: cacheKey)
-        self.thumbnailImage = image
+
+        if let doc = pdfDocument, let page = doc.page(at: pageIndex) {
+            let image = page.thumbnail(of: size, for: .mediaBox)
+            PresentationCacheManager.shared.cacheThumbnail(image, for: cacheKey)
+            self.thumbnailImage = image
+            return
+        }
+
+        if let url = fileURL {
+            let scale = await MainActor.run { UITraitCollection.current.displayScale }
+            let request = QLThumbnailGenerator.Request(fileAt: url, size: size, scale: scale, representationTypes: .thumbnail)
+            if let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) {
+                let image = rep.uiImage
+                PresentationCacheManager.shared.cacheThumbnail(image, for: cacheKey)
+                self.thumbnailImage = image
+            }
+        }
     }
 }
