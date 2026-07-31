@@ -1,15 +1,22 @@
 import SwiftUI
 import StoreKit
 
+// MARK: - PlanSelection
+
+public enum PlanSelection: String, CaseIterable, Identifiable, Sendable {
+    case yearly
+    case lifetime
+
+    public var id: String { rawValue }
+}
+
 // MARK: - PaywallView
 
-/// Vista comercial y transparente para la suscripción y planes de Lectoria según la especificación maestra.
+/// Vista comercial y transparente para la suscripción y planes de Lectoría según el diseño oficial.
 ///
 /// Soporta los niveles de acceso requeridos por la especificación:
-/// - `free`: Plan gratuito con límites.
-/// - `premium_founder`: Suscripción anual Fundador ($4.99/año, 1.000 cupos).
-/// - `premium_regular`: Suscripción anual Regular ($9.99/año).
-/// - `lifetime`: Licencia de por vida ($19.99 pago único, 250 cupos).
+/// - `yearly`: Suscripción anual Premium ($4.99/año con 7 días de prueba).
+/// - `lifetime`: Licencia de por vida ($19.99 pago único).
 /// - `institutional`: Acceso patrocinado por universidades/organizaciones.
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
@@ -18,65 +25,59 @@ struct PaywallView: View {
     @Environment(AppDependencies.self) private var dependencies
 
     @State private var products: [StoreKit.Product] = []
-    @State private var selectedProduct: StoreKit.Product?
+    @State private var selectedPlan: PlanSelection = .yearly
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showErrorAlert = false
     @State private var showInstitutionalAuth = false
     @State private var showManageSubscriptions = false
 
+    // Color del sistema de marca Terracota/Naranja de Lectoría
+    private let brandOrange = Color(red: 0.85, green: 0.42, blue: 0.15)
+
     var body: some View {
         let theme = themeManager.currentTheme
 
         NavigationStack {
-            ScrollView {
-                VStack(spacing: AppSpacing.xl) {
-                    // Encabezado con gradiente premium
-                    headerView(theme: theme)
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(spacing: AppSpacing.md) {
+                        // 1. Encabezado con botón de cierre
+                        headerSection(theme: theme)
 
-                    // Resumen de beneficios Premium
-                    benefitsSection(theme: theme)
+                        // 2. Ilustración de Mascota Oficial
+                        mascotSection
 
-                    // Banner de Prueba Gratuita (7 días)
-                    trialBannerView(theme: theme)
+                        // 3. Mensaje Principal (Título y Subtítulo)
+                        headlineSection(theme: theme)
 
-                    // Sección de compra (Precios reales de StoreKit 2)
-                    if isLoading && products.isEmpty {
-                        ProgressView()
-                            .padding(.vertical, AppSpacing.xl)
-                    } else if !products.isEmpty {
-                        pricingSection(theme: theme)
-                    } else {
-                        // Precios de referencia oficiales (Simulador / Fallback)
-                        fallbackPricingSection(theme: theme)
+                        // 4. Bloque de Beneficios Premium
+                        benefitsSection(theme: theme)
+
+                        // 5. Selector de Planes (Anual / Por vida)
+                        planSelectorSection(theme: theme)
+
+                        // 6. Tarjeta de Acceso Institucional
+                        institutionalCardSection(theme: theme)
+
+                        // 7. Acciones Secundarias (Restaurar y Administrar)
+                        secondaryActionsSection(theme: theme)
+
+                        // 8. Revelaciones Contractuales y Legales
+                        disclosuresSection(theme: theme)
+
+                        // Espaciador inferior para evitar que el contenido sea tapado por el CTA fijo
+                        Color.clear.frame(height: 140)
                     }
-
-                    // Enlace a Acceso Institucional
-                    institutionalLinkSection(theme: theme)
-
-                    // Enlaces legales, desgloses y restauración
-                    legalSection(theme: theme)
+                    .padding(.horizontal, AppSpacing.screenHorizontal)
+                    .padding(.vertical, AppSpacing.sm)
                 }
-                .padding(.horizontal, AppSpacing.screenHorizontal)
-                .padding(.vertical, AppSpacing.md)
+                .background(AppColor.background(for: theme))
+
+                // 9. CTA Fijo Inferior con Safe Area Bottom
+                bottomCTASection(theme: theme)
             }
-            .background(AppColor.background(for: theme))
-            .onAppear {
-                let isPremium = dependencies.subscriptionService.hasActiveSubscription
-                dependencies.analyticsService.track(.paywallViewed, properties: [
-                    "current_plan": isPremium ? "premium" : "free"
-                ])
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(String(localized: "Cerrar", comment: "Paywall: close button")) {
-                        dismiss()
-                    }
-                    .font(AppTypography.body)
-                    .foregroundStyle(AppColor.textSecondary(for: theme))
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .sheet(isPresented: $showInstitutionalAuth) {
                 InstitutionalAuthView {
                     dismiss()
@@ -85,6 +86,12 @@ struct PaywallView: View {
             .manageSubscriptionsSheet(isPresented: $showManageSubscriptions)
             .task {
                 await loadStoreKitProducts()
+            }
+            .onAppear {
+                let isPremium = dependencies.subscriptionService.hasActiveSubscription
+                dependencies.analyticsService.track(.paywallViewed, properties: [
+                    "current_plan": isPremium ? "premium" : "free"
+                ])
             }
             .alert(
                 String(localized: "Error", comment: "Alert title: error"),
@@ -99,250 +106,260 @@ struct PaywallView: View {
         }
     }
 
-    // MARK: - Header
+    // MARK: - 1. Encabezado
 
-    private func headerView(theme: AppTheme) -> some View {
-        VStack(spacing: AppSpacing.sm) {
-            Image(systemName: "crown.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(
-                    LinearGradient(
-                        colors: [AppColor.accent(for: theme), Color.orange],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .padding(.bottom, AppSpacing.xs)
+    private func headerSection(theme: AppTheme) -> some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+                    .frame(width: 32, height: 32)
+                    .background(Color.gray.opacity(0.12))
+                    .clipShape(Circle())
+            }
+            .accessibilityLabel("Cerrar planes")
 
-            Text("Lectoria Premium")
-                .font(.system(size: 28, weight: .bold, design: .serif))
+            Spacer()
+
+            Text("Elige tu plan")
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(AppColor.textPrimary(for: theme))
 
-            Text("Elige el plan ideal para tu lectura y estudio académico.",
-                 comment: "Paywall: subtitle description")
-                .font(AppTypography.subtitle)
+            Spacer()
+
+            // Balanceador horizontal transparente
+            Color.clear
+                .frame(width: 32, height: 32)
+        }
+        .padding(.top, AppSpacing.xs)
+    }
+
+    // MARK: - 2. Mascota Ilustración Oficial
+
+    private var mascotSection: some View {
+        Image("lectoriaPremiumMascot")
+            .resizable()
+            .aspectRatio(contentMode: .fill)
+            .frame(width: 100, height: 100)
+            .clipShape(Circle())
+            .shadow(color: brandOrange.opacity(0.25), radius: 8, x: 0, y: 4)
+            .padding(.vertical, AppSpacing.xs)
+    }
+
+    // MARK: - 3. Mensaje Principal
+
+    private func headlineSection(theme: AppTheme) -> some View {
+        VStack(spacing: AppSpacing.xxs) {
+            Text("Lee, estudia y organiza sin límites")
+                .font(.system(size: 24, weight: .bold, design: .serif))
+                .foregroundStyle(AppColor.textPrimary(for: theme))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+
+            Text("Desbloquea todas las herramientas Premium de Lectoría.")
+                .font(AppTypography.body)
                 .foregroundStyle(AppColor.textSecondary(for: theme))
                 .multilineTextAlignment(.center)
+                .lineLimit(2)
         }
-        .padding(.vertical, AppSpacing.md)
     }
 
-    // MARK: - Trial Banner
-
-    private func trialBannerView(theme: AppTheme) -> some View {
-        HStack(spacing: AppSpacing.sm) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(Color.orange)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Prueba Gratuita de 7 Días Incluida", comment: "Trial banner title")
-                    .font(AppTypography.bodyBold)
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
-                Text("Prueba todas las funciones Premium sin compromiso. Cancela cuando quieras en App Store.", comment: "Trial banner subtitle")
-                    .font(AppTypography.caption)
-                    .foregroundStyle(AppColor.textSecondary(for: theme))
-            }
-            Spacer()
-        }
-        .padding(AppSpacing.md)
-        .background(Color.orange.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppRadius.md)
-                .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1)
-        )
-    }
-
-    // MARK: - Benefits
+    // MARK: - 4. Bloque de Beneficios Premium
 
     private func benefitsSection(theme: AppTheme) -> some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
             benefitRow(
-                icon: "doc.badge.plus",
-                title: "Documentos Ilimitados",
-                desc: "Importa archivos EPUB, PDF, PPTX, TXT y Markdown sin cuota de biblioteca.",
+                icon: "book.fill",
+                title: "Lectura y biblioteca sin límites.",
                 theme: theme
             )
 
             benefitRow(
-                icon: "pencil.and.outline",
-                title: "Destacados y Notas Ilimitadas",
-                desc: "Organiza tus lecturas por categorías de estudio académicas sin restricciones.",
+                icon: "text.badge.checkmark",
+                title: "Notas, resaltados y herramientas de estudio.",
                 theme: theme
             )
 
             benefitRow(
-                icon: "brain.head.profile",
-                title: "IA y Traducción 100% Local",
-                desc: "Explicaciones, resúmenes y traducción procesados exclusivamente en tu iPhone sin enviar datos a servidores.",
+                icon: "speaker.wave.2.fill",
+                title: "Texto a voz y funciones avanzadas de lectura.",
                 theme: theme
             )
 
             benefitRow(
                 icon: "laptopcomputer.and.iphone",
-                title: "Hasta 3 Dispositivos Simultáneos",
-                desc: "Usa tu suscripción en hasta 3 dispositivos asociados a tu cuenta personal.",
+                title: "Uso en hasta 3 dispositivos.",
                 theme: theme
             )
         }
-        .padding(AppSpacing.lg)
-        .background(AppColor.surface(for: theme))
+        .padding(AppSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColor.surfaceSecondary(for: theme))
         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
     }
 
-    private func benefitRow(icon: String, title: String, desc: String, theme: AppTheme) -> some View {
-        HStack(alignment: .top, spacing: AppSpacing.md) {
+    private func benefitRow(icon: String, title: String, theme: AppTheme) -> some View {
+        HStack(spacing: AppSpacing.sm) {
             Image(systemName: icon)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(AppColor.accent(for: theme))
-                .frame(width: 28, height: 28)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(AppColor.textSecondary(for: theme))
+                .frame(width: 22, height: 22)
 
-            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                Text(title)
-                    .font(AppTypography.bodyBold)
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
-                Text(desc)
-                    .font(AppTypography.caption)
-                    .foregroundStyle(AppColor.textSecondary(for: theme))
-                    .lineLimit(nil)
-            }
+            Text(title)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(AppColor.textPrimary(for: theme))
         }
     }
 
-    // MARK: - Pricing Section (StoreKit 2)
+    // MARK: - 5. Selector de Planes
 
-    private func pricingSection(theme: AppTheme) -> some View {
-        VStack(spacing: AppSpacing.sm) {
-            ForEach(products) { product in
-                let isSelected = selectedProduct?.id == product.id
-                let isLifetime = product.id.contains("lifetime")
+    private func planSelectorSection(theme: AppTheme) -> some View {
+        VStack(spacing: AppSpacing.md) {
+            // Tarjeta 1: Premium Anual (Recomendado)
+            yearlyPlanCard(theme: theme)
 
-                Button {
-                    selectedProduct = product
-                } label: {
-                    HStack(alignment: .center) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(product.displayName)
-                                .font(.system(size: 15, weight: .bold))
+            // Tarjeta 2: Premium de por vida
+            lifetimePlanCard(theme: theme)
+        }
+        .padding(.top, AppSpacing.xs)
+    }
+
+    private func yearlyPlanCard(theme: AppTheme) -> some View {
+        let isSelected = selectedPlan == .yearly
+        let yearlyProduct = products.first(where: { $0.id.contains("yearly") || $0.id.contains("founder") })
+        let priceText = yearlyProduct?.displayPrice ?? "USD 4,99"
+
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedPlan = .yearly
+            }
+        } label: {
+            ZStack(alignment: .topLeading) {
+                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Premium Anual")
+                                .font(.system(size: 17, weight: .bold, design: .serif))
                                 .foregroundStyle(AppColor.textPrimary(for: theme))
 
-                            Text(product.description)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppColor.textSecondary(for: theme))
-                                .lineLimit(2)
+                            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                                Text(priceText)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(AppColor.textPrimary(for: theme))
+
+                                Text("al año")
+                                    .font(.system(size: 13, weight: .regular))
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                            }
                         }
 
                         Spacer()
 
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(product.displayPrice)
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(AppColor.textPrimary(for: theme))
-
-                            if !isLifetime {
-                                Text("/ año", comment: "Yearly period tag")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColor.textSecondary(for: theme))
-                            }
-                        }
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(isSelected ? brandOrange : AppColor.textTertiary(for: theme))
                     }
-                    .padding(AppSpacing.md)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppRadius.md)
-                            .stroke(
-                                isSelected ? AppColor.accent(for: theme) : AppColor.border(for: theme),
-                                lineWidth: isSelected ? 2 : 1
-                            )
-                    )
-                    .background(AppColor.surface(for: theme))
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
-                }
-                .buttonStyle(.plain)
-            }
 
-            purchaseButton(theme: theme)
+                    Text("7 días gratis, luego \(priceText) al año.")
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                        .padding(.top, 2)
+                }
+                .padding(AppSpacing.md)
+                .padding(.top, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AppColor.surface(for: theme))
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppRadius.md)
+                        .stroke(isSelected ? brandOrange : AppColor.border(for: theme), lineWidth: isSelected ? 2 : 1)
+                )
+
+                // Badge "RECOMENDADO" superpuesto en el borde superior
+                Text("RECOMENDADO")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(brandOrange)
+                    .clipShape(Capsule())
+                    .offset(x: 16, y: -10)
+            }
         }
+        .buttonStyle(.plain)
     }
 
-    private func fallbackPricingSection(theme: AppTheme) -> some View {
-        VStack(spacing: AppSpacing.sm) {
-            // Opción 1: Premium Fundador ($4.99/año)
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Premium Fundador")
-                            .font(.system(size: 15, weight: .bold))
+    private func lifetimePlanCard(theme: AppTheme) -> some View {
+        let isSelected = selectedPlan == .lifetime
+        let lifetimeProduct = products.first(where: { $0.id.contains("lifetime") })
+        let priceText = lifetimeProduct?.displayPrice ?? "USD 19,99"
+
+        return Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedPlan = .lifetime
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Premium de por vida")
+                            .font(.system(size: 17, weight: .bold, design: .serif))
                             .foregroundStyle(AppColor.textPrimary(for: theme))
 
-                        Text("Acceso ilimitado por 12 meses con 7 días de prueba")
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(priceText)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(AppColor.textPrimary(for: theme))
+
+                            Text("pago único")
+                                .font(.system(size: 13, weight: .regular))
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                        }
                     }
 
                     Spacer()
 
-                    Text("USD $4.99 / año")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(isSelected ? brandOrange : AppColor.textTertiary(for: theme))
                 }
+
+                Text("Acceso permanente a las funciones principales.")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                    .padding(.top, 2)
             }
             .padding(AppSpacing.md)
-            .background(
-                RoundedRectangle(cornerRadius: AppRadius.md)
-                    .stroke(AppColor.accent(for: theme), lineWidth: 1.5)
-            )
-            .background(AppColor.surface(for: theme))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
-
-            // Opción 2: Premium Lifetime ($19.99)
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Premium De por Vida")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(AppColor.textPrimary(for: theme))
-
-                        Text("Licencia permanente para funciones principales")
-                            .font(.system(size: 12))
-                            .foregroundStyle(AppColor.textSecondary(for: theme))
-                    }
-
-                    Spacer()
-
-                    Text("USD $19.99")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(AppColor.textPrimary(for: theme))
-                }
-            }
-            .padding(AppSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(AppColor.surface(for: theme))
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
             .overlay(
                 RoundedRectangle(cornerRadius: AppRadius.md)
-                    .stroke(AppColor.border(for: theme), lineWidth: 1)
+                    .stroke(isSelected ? brandOrange : AppColor.border(for: theme), lineWidth: isSelected ? 2 : 1)
             )
-
-            Button(String(localized: "Simular suscripción Premium", comment: "Paywall: simulate action")) {
-                simulatePremiumPurchase()
-            }
-            .font(.system(size: 15, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background(AppColor.accent(for: theme))
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
         }
+        .buttonStyle(.plain)
     }
 
-    private func institutionalLinkSection(theme: AppTheme) -> some View {
+    // MARK: - 6. Acceso Institucional
+
+    private func institutionalCardSection(theme: AppTheme) -> some View {
         Button {
             showInstitutionalAuth = true
         } label: {
             HStack(spacing: AppSpacing.sm) {
-                Image(systemName: "building.columns.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(AppColor.accent(for: theme))
+                ZStack {
+                    Circle()
+                        .fill(brandOrange.opacity(0.12))
+                        .frame(width: 36, height: 36)
+
+                    Image(systemName: "building.columns.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(brandOrange)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("¿Perteneces a una institución educativa?", comment: "Institutional prompt title")
@@ -359,89 +376,130 @@ struct PaywallView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AppColor.textTertiary(for: theme))
             }
-            .padding(AppSpacing.md)
+            .padding(AppSpacing.sm)
             .background(AppColor.surface(for: theme))
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
             .overlay(
                 RoundedRectangle(cornerRadius: AppRadius.md)
-                    .strokeBorder(AppColor.accent(for: theme).opacity(0.3), lineWidth: 1)
+                    .stroke(AppColor.border(for: theme), lineWidth: 1)
             )
         }
+        .buttonStyle(.plain)
     }
 
-    private func purchaseButton(theme: AppTheme) -> some View {
-        Button {
-            if let selectedProduct {
-                performPurchase(selectedProduct)
+    // MARK: - 7. Acciones Secundarias
+
+    private func secondaryActionsSection(theme: AppTheme) -> some View {
+        HStack(spacing: AppSpacing.md) {
+            Button(String(localized: "Restaurar compras", comment: "Paywall: restore action")) {
+                performRestore()
             }
-        } label: {
-            if isLoading {
-                ProgressView()
-                    .tint(.white)
-            } else {
-                Text(String(localized: "Iniciar Prueba Gratuita de 7 Días", comment: "Paywall: start trial button"))
-                    .font(AppTypography.bodyBold)
-                    .foregroundStyle(.white)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(brandOrange)
+
+            Text("•")
+                .font(.system(size: 12))
+                .foregroundStyle(AppColor.textTertiary(for: theme))
+
+            Button(String(localized: "Administrar suscripción", comment: "Paywall: manage action")) {
+                showManageSubscriptions = true
             }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(brandOrange)
         }
-        .disabled(selectedProduct == nil || isLoading)
-        .frame(maxWidth: .infinity)
-        .frame(height: 48)
-        .background(selectedProduct == nil ? AppColor.textTertiary(for: theme) : AppColor.accent(for: theme))
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
         .padding(.top, AppSpacing.xs)
     }
 
-    // MARK: - Legal & Restore
+    // MARK: - 8. Legales y Divulgaciones
 
-    private func legalSection(theme: AppTheme) -> some View {
-        VStack(spacing: AppSpacing.sm) {
-            HStack(spacing: AppSpacing.md) {
-                Button(String(localized: "Restaurar compras", comment: "Paywall: restore action")) {
-                    performRestore()
-                }
-                .font(AppTypography.caption.weight(.semibold))
-                .foregroundStyle(AppColor.accent(for: theme))
-
-                Text("•")
-                    .font(AppTypography.caption)
-                    .foregroundStyle(AppColor.textSecondary(for: theme))
-
-                Button(String(localized: "Administrar suscripción", comment: "Paywall: manage action")) {
-                    showManageSubscriptions = true
-                }
-                .font(AppTypography.caption.weight(.semibold))
-                .foregroundStyle(AppColor.accent(for: theme))
-            }
-
-            // Texto contractual obligatorio para Lifetime
+    private func disclosuresSection(theme: AppTheme) -> some View {
+        VStack(spacing: AppSpacing.xs) {
             Text("Lectoría Lifetime concede acceso permanente a las funciones principales del lector incluidas en esta modalidad, durante la vida operativa del producto y mientras sea compatible con los dispositivos y sistemas soportados. No incluye servicios de terceros, almacenamiento adicional, inteligencia artificial externa ni productos futuros independientes.",
                  comment: "Paywall: lifetime disclosure contract")
                 .font(.system(size: 10))
                 .foregroundStyle(AppColor.textTertiary(for: theme))
                 .multilineTextAlignment(.center)
-                .padding(.top, AppSpacing.xs)
 
-            // Divulgación legal de suscripciones auto-renovables
             Text("Suscripción auto-renovable. Al finalizar los 7 días de prueba gratuita, el cobro se realizará a tu cuenta de Apple ID. La suscripción se renueva automáticamente a menos que se cancele al menos 24 horas antes del final del período actual.",
                  comment: "Paywall: auto renewal disclosure")
                 .font(.system(size: 10))
                 .foregroundStyle(AppColor.textTertiary(for: theme))
                 .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, AppSpacing.xs)
+    }
 
-            HStack(spacing: AppSpacing.md) {
-                Button(String(localized: "Términos de servicio", comment: "Legal: terms")) {
-                    if let url = URL(string: "https://lectoria.app/terms") { openURL(url) }
+    // MARK: - 9. Bottom CTA
+
+    private func bottomCTASection(theme: AppTheme) -> some View {
+        let yearlyProduct = products.first(where: { $0.id.contains("yearly") || $0.id.contains("founder") })
+        let lifetimeProduct = products.first(where: { $0.id.contains("lifetime") })
+        let yearlyPrice = yearlyProduct?.displayPrice ?? "USD 4,99"
+        let lifetimePrice = lifetimeProduct?.displayPrice ?? "USD 19,99"
+
+        return VStack(spacing: AppSpacing.xs) {
+            // Texto descriptivo sobre el botón
+            if selectedPlan == .yearly {
+                Text("7 días gratis. Después, \(yearlyPrice) al año.")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+            } else {
+                Text("\(lifetimePrice) pago único.")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AppColor.textPrimary(for: theme))
+            }
+
+            // Botón Principal CTA
+            Button {
+                let targetProduct = selectedPlan == .yearly ? yearlyProduct : lifetimeProduct
+                if let targetProduct {
+                    performPurchase(targetProduct)
+                } else {
+                    simulatePremiumPurchase()
                 }
-                Text("•")
-                Button(String(localized: "Política de privacidad", comment: "Legal: privacy")) {
-                    if let url = URL(string: "https://lectoria.app/privacy") { openURL(url) }
+            } label: {
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Text(selectedPlan == .yearly ? "Comenzar prueba gratuita" : "Comprar acceso de por vida")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
                 }
             }
-            .font(.system(size: 11))
-            .foregroundStyle(AppColor.textSecondary(for: theme))
+            .disabled(isLoading)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(brandOrange)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            // Links legales inferiores
+            VStack(spacing: 3) {
+                Text("DETALLES DE COMPRA Y RENOVACIÓN")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(AppColor.textTertiary(for: theme))
+
+                HStack(spacing: AppSpacing.sm) {
+                    Button("Términos de servicio") {
+                        if let url = URL(string: "https://lectoria.app/terms") { openURL(url) }
+                    }
+                    Text("•")
+                    Button("Política de privacidad") {
+                        if let url = URL(string: "https://lectoria.app/privacy") { openURL(url) }
+                    }
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(AppColor.textSecondary(for: theme))
+            }
+            .padding(.top, 2)
         }
-        .padding(.vertical, AppSpacing.md)
+        .padding(.horizontal, AppSpacing.screenHorizontal)
+        .padding(.top, AppSpacing.sm)
+        .padding(.bottom, AppSpacing.sm)
+        .background(
+            AppColor.surface(for: theme)
+                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: -4)
+        )
     }
 
     // MARK: - Logic Actions
@@ -452,7 +510,6 @@ struct PaywallView: View {
             let loaded = try await dependencies.subscriptionService.loadProducts()
             await MainActor.run {
                 self.products = loaded.sorted(by: { $0.price < $1.price })
-                self.selectedProduct = self.products.first
                 self.isLoading = false
             }
         } catch {
