@@ -59,7 +59,7 @@ struct HomeView: View {
         }
         .background(AppColor.background(for: theme))
         .navigationTitle(String(localized: "Inicio", comment: "Home screen title"))
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $selectedPublication) { record in
             switch record.publicationType {
             case .pdf:

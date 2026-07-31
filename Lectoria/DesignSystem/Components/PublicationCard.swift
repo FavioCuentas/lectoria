@@ -97,10 +97,14 @@ struct PublicationCard: View {
         let theme = themeManager.currentTheme
         return Button(action: action) {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                // Portada placeholder
-                coverView
-                    .frame(height: 180)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                // Portada con dimensiones delimitadas por la celda de la cuadrícula
+                GeometryReader { geometry in
+                    coverView
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                }
+                .frame(height: 180)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
 
                 VStack(alignment: .leading, spacing: AppSpacing.xxs) {
                     Text(publication.title)
