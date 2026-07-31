@@ -1,12 +1,13 @@
 import SwiftUI
 import QuickLook
+import PDFKit
 
 // MARK: - PresentationReaderView
 
 /// Vista principal de lectura de presentaciones PowerPoint (`.ppt` y `.pptx`) de alta fidelidad.
 ///
-/// Integra el visor nativo Quick Look con el sistema de navegación, barra de progreso por páginas/diapositivas,
-/// diálogo "Ir a página" e historial de salto de página de Lectoria.
+/// Integra la maquetación adaptativa inspirada en Apple Keynote: tira de miniaturas, slide central
+/// con relación de aspecto fija, controles adaptativos, modo pantalla completa e historial de saltos.
 struct PresentationReaderView: View {
     let record: PublicationRecord
 
@@ -14,6 +15,7 @@ struct PresentationReaderView: View {
     @Environment(ThemeManager.self) private var themeManager
 
     @State private var fileURL: URL?
+    @State private var pdfDocument: PDFDocument? = nil
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showShareSheet = false
@@ -25,156 +27,253 @@ struct PresentationReaderView: View {
     @State private var showGoToPageDialog = false
     @State private var goToPageText = ""
 
+    // Estados de interfaz adaptativa estilo Keynote
+    @State private var showThumbnails = true
+    @State private var isFullscreen = false
+
     var body: some View {
         let theme = themeManager.currentTheme
         let progressPercent = Double(currentSlideIndex) / Double(max(1, totalSlides - 1))
 
         VStack(spacing: 0) {
-            // 1. Barra de herramientas superior personalizada
-            HStack(spacing: AppSpacing.sm) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
+            // 1. Barra de herramientas superior personalizada (ocultable en pantalla completa)
+            if !isFullscreen {
+                HStack(spacing: AppSpacing.sm) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                            .frame(width: 36, height: 36)
+                            .background(AppColor.surfaceSecondary(for: theme))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel(String(localized: "Volver", comment: "Back action label"))
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showThumbnails.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showThumbnails ? "rectangle.grid.1x2.fill" : "rectangle.grid.1x2")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(showThumbnails ? AppColor.accent(for: theme) : AppColor.textPrimary(for: theme))
+                            .frame(width: 36, height: 36)
+                            .background(AppColor.surfaceSecondary(for: theme))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel(String(localized: "Alternar miniaturas", comment: "Toggle thumbnails label"))
+
+                    Text(record.title)
+                        .font(AppTypography.bodyBold)
                         .foregroundStyle(AppColor.textPrimary(for: theme))
-                        .frame(width: 36, height: 36)
-                        .background(AppColor.surfaceSecondary(for: theme))
-                        .clipShape(Circle())
-                }
-                .accessibilityLabel(String(localized: "Volver", comment: "Back action label"))
+                        .lineLimit(1)
 
-                Text(record.title)
-                    .font(AppTypography.bodyBold)
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
-                    .lineLimit(1)
+                    Spacer()
 
-                Spacer()
-
-                if let fileURL {
-                    ShareLink(item: fileURL) {
-                        Image(systemName: "square.and.arrow.up")
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isFullscreen.toggle()
+                        }
+                    } label: {
+                        Image(systemName: isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                             .frame(width: 36, height: 36)
                             .background(AppColor.surfaceSecondary(for: theme))
                             .clipShape(Circle())
                     }
-                }
-            }
-            .padding(.horizontal, AppSpacing.md)
-            .padding(.vertical, AppSpacing.xs)
-            .background(AppColor.surface(for: theme))
+                    .accessibilityLabel(String(localized: "Pantalla completa", comment: "Toggle fullscreen label"))
 
-            Divider()
-                .background(AppColor.border(for: theme))
-
-            // 2. Visor principal con capas de flotación
-            ZStack(alignment: .bottom) {
-                AppColor.background(for: theme)
-                    .ignoresSafeArea()
-
-                if let fileURL, errorMessage == nil {
-                    QuickLookPreviewWrapper(fileURL: fileURL)
-                } else if isLoading {
-                    VStack(spacing: AppSpacing.md) {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                            .tint(AppColor.accent(for: theme))
-                        Text(String(localized: "Cargando presentación…", comment: "Reader: loading presentation"))
-                            .font(AppTypography.body)
-                            .foregroundStyle(AppColor.textSecondary(for: theme))
-                    }
-                } else if let errorMessage {
-                    errorView(message: errorMessage, theme: theme)
-                }
-
-                // Botón flotante para volver a la diapositiva previa tras un salto
-                if let originIndex = lastJumpOriginIndex, originIndex != currentSlideIndex {
-                    Button {
-                        lastJumpOriginIndex = nil
-                        currentSlideIndex = originIndex
-                    } label: {
-                        HStack(spacing: AppSpacing.xs) {
-                            Image(systemName: "arrow.uturn.backward.circle.fill")
-                                .font(.subheadline)
-                            Text(String(localized: "Volver a pág. \(originIndex + 1)", comment: "Reader: jump back button"))
-                                .font(AppTypography.captionBold)
+                    if let fileURL {
+                        ShareLink(item: fileURL) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(AppColor.textPrimary(for: theme))
+                                .frame(width: 36, height: 36)
+                                .background(AppColor.surfaceSecondary(for: theme))
+                                .clipShape(Circle())
                         }
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.vertical, AppSpacing.xs)
-                        .background(AppColor.accent(for: theme))
-                        .foregroundStyle(.white)
-                        .clipShape(Capsule())
-                        .shadow(color: AppShadow.medium(for: theme).color,
-                                radius: AppShadow.medium(for: theme).radius,
-                                x: AppShadow.medium(for: theme).x,
-                                y: AppShadow.medium(for: theme).y)
                     }
-                    .padding(.bottom, AppSpacing.sm)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-            }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.xs)
+                .background(AppColor.surface(for: theme))
 
-            // 3. Panel Inferior Integrado (Navegación por Diapositivas & Progreso)
-            VStack(spacing: AppSpacing.xs) {
                 Divider()
                     .background(AppColor.border(for: theme))
-
-                HStack {
-                    Button {
-                        goToPageText = "\(currentSlideIndex + 1)"
-                        showGoToPageDialog = true
-                    } label: {
-                        HStack(spacing: AppSpacing.xxs) {
-                            Text(String(localized: "Página \(currentSlideIndex + 1) de \(totalSlides)", comment: "Reader: slide progression"))
-                                .font(AppTypography.caption)
-                                .foregroundStyle(AppColor.textSecondary(for: theme))
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(AppColor.textTertiary(for: theme))
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Ir a número de página. Página actual \(currentSlideIndex + 1) de \(totalSlides)")
-
-                    Spacer()
-
-                    Button {
-                        goToPageText = "\(currentSlideIndex + 1)"
-                        showGoToPageDialog = true
-                    } label: {
-                        Text(String(format: "%.0f%%", progressPercent * 100))
-                            .font(AppTypography.captionBold)
-                            .foregroundStyle(AppColor.accent(for: theme))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Ir a número de página por porcentaje. Progreso actual \(Int(progressPercent * 100))%")
-                }
-                .padding(.horizontal, AppSpacing.lg)
-                .padding(.top, AppSpacing.xs)
-
-                ProgressView(value: progressPercent, total: 1.0)
-                    .tint(AppColor.accent(for: theme))
-                    .padding(.horizontal, AppSpacing.lg)
-                    .padding(.bottom, AppSpacing.xs)
             }
-            .background(
-                AppColor.surface(for: theme)
-                    .shadow(color: AppShadow.subtle(for: theme).color,
-                            radius: AppShadow.subtle(for: theme).radius,
-                            x: AppShadow.subtle(for: theme).x,
-                            y: AppShadow.subtle(for: theme).y)
-            )
+
+            // 2. Área Central de Lectura (Con Sidebar opcional para iPad / Tira para iPhone)
+            GeometryReader { geometry in
+                let isWideScreen = geometry.size.width > 600
+
+                HStack(spacing: 0) {
+                    // Miniaturas verticales para pantallas anchas (iPad / Mac)
+                    if showThumbnails && isWideScreen && !isFullscreen {
+                        PresentationThumbnailStripView(
+                            totalSlides: totalSlides,
+                            currentSlideIndex: $currentSlideIndex,
+                            isVertical: true,
+                            onSelectSlide: { index in
+                                currentSlideIndex = index
+                            }
+                        )
+
+                        Divider()
+                            .background(AppColor.border(for: theme))
+                    }
+
+                    // Contenedor del Slide Central
+                    ZStack(alignment: .bottom) {
+                        AppColor.background(for: theme)
+                            .ignoresSafeArea()
+
+                        if let pdfDoc = pdfDocument {
+                            // Ruta B: PDFKit derivado de alta fidelidad
+                            PDFPresentationPreviewWrapper(pdfDocument: pdfDoc, pageIndex: currentSlideIndex)
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        isFullscreen.toggle()
+                                    }
+                                }
+                        } else if let fileURL, errorMessage == nil {
+                            // Ruta A: Quick Look nativo del original (.ppt / .pptx)
+                            QuickLookPreviewWrapper(fileURL: fileURL)
+                        } else if isLoading {
+                            VStack(spacing: AppSpacing.md) {
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                                    .tint(AppColor.accent(for: theme))
+                                Text(String(localized: "Cargando presentación…", comment: "Reader: loading presentation"))
+                                    .font(AppTypography.body)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                            }
+                        } else if let errorMessage {
+                            errorView(message: errorMessage, theme: theme)
+                        }
+
+                        // Botón flotante para salir de pantalla completa
+                        if isFullscreen {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isFullscreen = false
+                                }
+                            } label: {
+                                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(AppSpacing.xs)
+                                    .background(AppColor.surface(for: theme).opacity(0.85))
+                                    .foregroundStyle(AppColor.textPrimary(for: theme))
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .padding(.bottom, AppSpacing.md)
+                        }
+
+                        // Botón flotante para volver a la diapositiva previa tras un salto
+                        if let originIndex = lastJumpOriginIndex, originIndex != currentSlideIndex, !isFullscreen {
+                            Button {
+                                lastJumpOriginIndex = nil
+                                currentSlideIndex = originIndex
+                            } label: {
+                                HStack(spacing: AppSpacing.xs) {
+                                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                                        .font(.subheadline)
+                                    Text(String(localized: "Volver a pág. \(originIndex + 1)", comment: "Reader: jump back button"))
+                                        .font(AppTypography.captionBold)
+                                }
+                                .padding(.horizontal, AppSpacing.md)
+                                .padding(.vertical, AppSpacing.xs)
+                                .background(AppColor.accent(for: theme))
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                                .shadow(color: AppShadow.medium(for: theme).color,
+                                        radius: AppShadow.medium(for: theme).radius,
+                                        x: AppShadow.medium(for: theme).x,
+                                        y: AppShadow.medium(for: theme).y)
+                            }
+                            .padding(.bottom, AppSpacing.sm)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
+                }
+            }
+
+            // 3. Miniaturas horizontales para iPhone (cuando no es pantalla ancha y está activo)
+            if showThumbnails && !isFullscreen {
+                PresentationThumbnailStripView(
+                    totalSlides: totalSlides,
+                    currentSlideIndex: $currentSlideIndex,
+                    isVertical: false,
+                    onSelectSlide: { index in
+                        currentSlideIndex = index
+                    }
+                )
+
+                Divider()
+                    .background(AppColor.border(for: theme))
+            }
+
+            // 4. Panel Inferior Integrado (Navegación por Diapositivas & Barra de Progreso)
+            if !isFullscreen {
+                VStack(spacing: AppSpacing.xs) {
+                    HStack {
+                        Button {
+                            goToPageText = "\(currentSlideIndex + 1)"
+                            showGoToPageDialog = true
+                        } label: {
+                            HStack(spacing: AppSpacing.xxs) {
+                                Text(String(localized: "Diapositiva \(currentSlideIndex + 1) de \(totalSlides)", comment: "Reader: slide progression"))
+                                    .font(AppTypography.caption)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ir a número de diapositiva. Diapositiva actual \(currentSlideIndex + 1) de \(totalSlides)")
+
+                        Spacer()
+
+                        Button {
+                            goToPageText = "\(currentSlideIndex + 1)"
+                            showGoToPageDialog = true
+                        } label: {
+                            Text(String(format: "%.0f%%", progressPercent * 100))
+                                .font(AppTypography.captionBold)
+                                .foregroundStyle(AppColor.accent(for: theme))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Ir a número de diapositiva por porcentaje. Progreso actual \(Int(progressPercent * 100))%")
+                    }
+                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.top, AppSpacing.xs)
+
+                    ProgressView(value: progressPercent, total: 1.0)
+                        .tint(AppColor.accent(for: theme))
+                        .padding(.horizontal, AppSpacing.lg)
+                        .padding(.bottom, AppSpacing.xs)
+                }
+                .background(
+                    AppColor.surface(for: theme)
+                        .shadow(color: AppShadow.subtle(for: theme).color,
+                                radius: AppShadow.subtle(for: theme).radius,
+                                x: AppShadow.subtle(for: theme).x,
+                                y: AppShadow.subtle(for: theme).y)
+                )
+            }
         }
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .alert(String(localized: "Ir a página", comment: "Presentation jump alert title"), isPresented: $showGoToPageDialog) {
-            TextField(String(localized: "Número de página (1-\(totalSlides))", comment: "Page textfield placeholder"), text: $goToPageText)
+            TextField(String(localized: "Número de diapositiva (1-\(totalSlides))", comment: "Slide textfield placeholder"), text: $goToPageText)
                 .keyboardType(.numberPad)
-            Button(String(localized: "Ir", comment: "Go to page confirm")) {
+            Button(String(localized: "Ir", comment: "Go to slide confirm")) {
                 if let page = Int(goToPageText), page >= 1 && page <= totalSlides {
                     let targetIndex = page - 1
                     if targetIndex != currentSlideIndex {
@@ -185,7 +284,7 @@ struct PresentationReaderView: View {
             }
             Button(String(localized: "Cancelar", comment: "Cancel button"), role: .cancel) {}
         } message: {
-            Text(String(localized: "Introduce el número de página al que deseas saltar.", comment: "Go to page alert message"))
+            Text(String(localized: "Introduce el número de diapositiva al que deseas saltar.", comment: "Go to slide alert message"))
         }
         .task {
             await resolveAndPrepareFile()
@@ -218,7 +317,10 @@ struct PresentationReaderView: View {
 
         if let validURL = finalURL {
             self.fileURL = validURL
-            if let parsedSlides = try? await PPTXParser.parse(url: validURL), !parsedSlides.isEmpty {
+            if validURL.pathExtension.lowercased() == "pdf", let pdf = PDFDocument(url: validURL) {
+                self.pdfDocument = pdf
+                self.totalSlides = pdf.pageCount
+            } else if let parsedSlides = try? await PPTXParser.parse(url: validURL), !parsedSlides.isEmpty {
                 self.totalSlides = parsedSlides.count
             }
             self.isLoading = false
