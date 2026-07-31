@@ -223,24 +223,26 @@ struct PresentationReaderView: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
                     }
+
+                    // Miniaturas verticales a la derecha para iPhone
+                    if showThumbnails && !isWideScreen && !isFullscreen {
+                        Divider()
+                            .background(AppColor.border(for: theme))
+
+                        PresentationThumbnailStripView(
+                            pdfDocument: pdfDocument,
+                            totalSlides: totalSlides,
+                            currentSlideIndex: $currentSlideIndex,
+                            isVertical: true,
+                            onSelectSlide: { index in
+                                currentSlideIndex = index
+                            }
+                        )
+                    }
                 }
             }
 
-            // 3. Miniaturas horizontales para iPhone (únicamente cuando NO es pantalla ancha y está activo)
-            if showThumbnails && !isWideScreen && !isFullscreen {
-                PresentationThumbnailStripView(
-                    pdfDocument: pdfDocument,
-                    totalSlides: totalSlides,
-                    currentSlideIndex: $currentSlideIndex,
-                    isVertical: false,
-                    onSelectSlide: { index in
-                        currentSlideIndex = index
-                    }
-                )
 
-                Divider()
-                    .background(AppColor.border(for: theme))
-            }
             // 4. Panel Inferior de Notas por Diapositiva (5 Categorías)
             if !isFullscreen {
                 PresentationNotesPanelView(

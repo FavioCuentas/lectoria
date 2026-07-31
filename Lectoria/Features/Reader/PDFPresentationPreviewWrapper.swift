@@ -172,7 +172,7 @@ private class CustomPDFView: PDFView {
         return super.canPerformAction(action, withSender: sender)
     }
 
-    @objc private func addNoteAction(_ sender: Any?) {
+    @objc fileprivate func addNoteAction(_ sender: Any?) {
         onAddNote?()
     }
 }
