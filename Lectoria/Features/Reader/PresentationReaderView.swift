@@ -217,6 +217,8 @@ struct PresentationReaderView: View {
                 )
 
                 Divider()
+                    .background(AppColor.border(for: theme))
+            }
             // 4. Panel Inferior de Notas por Diapositiva (5 Categorías)
             if !isFullscreen {
                 PresentationNotesPanelView(
