@@ -31,6 +31,10 @@ struct PresentationReaderView: View {
     @State private var showThumbnails = true
     @State private var isFullscreen = false
 
+    // Sistema de notas y anotaciones
+    @State private var notes: [Note] = []
+    @State private var annotationPins: [SlideAnnotationPin] = []
+
     var body: some View {
         let theme = themeManager.currentTheme
         let progressPercent = Double(currentSlideIndex) / Double(max(1, totalSlides - 1))
@@ -213,10 +217,28 @@ struct PresentationReaderView: View {
                 )
 
                 Divider()
+            // 4. Panel Inferior de Notas por Diapositiva (5 Categorías)
+            if !isFullscreen {
+                PresentationNotesPanelView(
+                    slideIndex: currentSlideIndex,
+                    totalSlides: totalSlides,
+                    existingNotes: notes,
+                    onSaveNote: { text, category in
+                        let newNote = Note(
+                            publicationID: record.id,
+                            anchor: "slide_\(currentSlideIndex + 1)",
+                            body: text,
+                            tags: [category.rawValue]
+                        )
+                        notes.append(newNote)
+                    }
+                )
+
+                Divider()
                     .background(AppColor.border(for: theme))
             }
 
-            // 4. Panel Inferior Integrado (Navegación por Diapositivas & Barra de Progreso)
+            // 5. Panel Inferior Integrado (Navegación por Diapositivas & Barra de Progreso)
             if !isFullscreen {
                 VStack(spacing: AppSpacing.xs) {
                     HStack {
