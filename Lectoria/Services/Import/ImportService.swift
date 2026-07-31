@@ -143,7 +143,7 @@ public final class ImportService: Sendable {
         }
 
         // 8. Mover el archivo de la carpeta temporal a la carpeta segura persistente
-        let storedURL = try fileStorageService.store(fileAt: tempFileURL, withName: localFileName)
+        _ = try fileStorageService.store(fileAt: tempFileURL, withName: localFileName)
 
         // 9. Crear el registro en la base de datos local
         var record = PublicationRecord.newImport(

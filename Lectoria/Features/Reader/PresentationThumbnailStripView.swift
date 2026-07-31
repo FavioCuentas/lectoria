@@ -142,14 +142,9 @@ private struct RealThumbnailView: View {
         }
 
         let size = CGSize(width: 160, height: 100)
-        Task.detached(priority: .userInitiated) {
-            guard let page = doc.page(at: pageIndex) else { return }
-            let image = page.thumbnail(of: size, for: .mediaBox)
-            PresentationCacheManager.shared.cacheThumbnail(image, for: cacheKey)
-
-            await MainActor.run {
-                self.thumbnailImage = image
-            }
-        }
+        guard let page = doc.page(at: pageIndex) else { return }
+        let image = page.thumbnail(of: size, for: .mediaBox)
+        PresentationCacheManager.shared.cacheThumbnail(image, for: cacheKey)
+        self.thumbnailImage = image
     }
 }

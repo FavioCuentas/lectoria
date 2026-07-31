@@ -266,7 +266,7 @@ public final class CoverGenerator: @unchecked Sendable {
     @MainActor
     private func generatePresentationCover(from sourceURL: URL, title: String, author: String?, to destinationURL: URL) async throws {
         let size = CGSize(width: 240, height: 320)
-        let scale = UIScreen.main.scale
+        let scale = UITraitCollection.current.displayScale
         let request = QLThumbnailGenerator.Request(fileAt: sourceURL, size: size, scale: scale, representationTypes: .thumbnail)
 
         do {

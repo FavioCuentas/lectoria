@@ -25,7 +25,7 @@ public final class InstitutionalAuthViewModel {
     public var showErrorAlert: Bool = false
     public var resendCountdown: Int = 0
 
-    nonisolated(unsafe) private var timerTask: Task<Void, Never>? = nil
+    private var timerTask: Task<Void, Never>? = nil
 
     // MARK: - Dependencias
 

@@ -5,7 +5,7 @@ import PDFKit
 
 /// Envoltorio `UIViewRepresentable` para visualizar un PDF derivado de presentación con alta fidelidad vectorial vía `PDFKit`.
 ///
-/// Implementa un `Coordinator` que sincroniza bidireccionalmente la página activa con `pageIndex`,
+/// Implementa un `Coordinator` aislado en `@MainActor` que sincroniza bidireccionalmente la página activa con `pageIndex`,
 /// monitoriza la selección de texto en la diapositiva y proyecta resaltados guardados.
 struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     let pdfDocument: PDFDocument
@@ -54,6 +54,7 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
 
     // MARK: - Coordinator
 
+    @MainActor
     final class Coordinator: NSObject {
         var parent: PDFPresentationPreviewWrapper
         var isUpdatingFromPDFView = false
@@ -65,7 +66,10 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
         }
 
         deinit {
-            notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
+            // Eliminar observadores en deinit
+            let observers = notificationObservers
+            notificationObservers.removeAll()
+            observers.forEach { NotificationCenter.default.removeObserver($0) }
         }
 
         func attach(to pdfView: PDFView) {
@@ -75,13 +79,15 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
                 object: pdfView,
                 queue: .main
             ) { [weak self, weak pdfView] _ in
-                guard let self = self, let pdfView = pdfView, let currentPage = pdfView.currentPage else { return }
-                let newIndex = pdfView.document?.index(for: currentPage) ?? 0
-                if self.parent.pageIndex != newIndex {
-                    self.isUpdatingFromPDFView = true
-                    self.parent.pageIndex = newIndex
-                    DispatchQueue.main.async {
-                        self.isUpdatingFromPDFView = false
+                Task { @MainActor [weak self, weak pdfView] in
+                    guard let self = self, let pdfView = pdfView, let currentPage = pdfView.currentPage else { return }
+                    let newIndex = pdfView.document?.index(for: currentPage) ?? 0
+                    if self.parent.pageIndex != newIndex {
+                        self.isUpdatingFromPDFView = true
+                        self.parent.pageIndex = newIndex
+                        Task { @MainActor in
+                            self.isUpdatingFromPDFView = false
+                        }
                     }
                 }
             }
@@ -92,13 +98,15 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
                 object: pdfView,
                 queue: .main
             ) { [weak self, weak pdfView] _ in
-                guard let self = self, let pdfView = pdfView, let selection = pdfView.currentSelection,
-                      let text = selection.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      let page = pdfView.currentPage else { return }
+                Task { @MainActor [weak self, weak pdfView] in
+                    guard let self = self, let pdfView = pdfView, let selection = pdfView.currentSelection,
+                          let text = selection.string, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                          let page = pdfView.currentPage else { return }
 
-                let bounds = selection.bounds(for: page)
-                let slideIdx = pdfView.document?.index(for: page) ?? 0
-                self.parent.onTextSelected?(text, bounds, slideIdx)
+                    let bounds = selection.bounds(for: page)
+                    let slideIdx = pdfView.document?.index(for: page) ?? 0
+                    self.parent.onTextSelected?(text, bounds, slideIdx)
+                }
             }
 
             notificationObservers.append(pageObserver)
