@@ -80,10 +80,10 @@ struct InstitutionalAuthView: View {
                 let vm = InstitutionalAuthViewModel(
                     institutionService: dependencies.institutionService,
                     authService: dependencies.authService,
-                    onGuestMigrate: { @MainActor userID in
+                    onGuestMigrate: { userID in
                         await dependencies.migrateGuestData(to: userID)
                     },
-                    onSuccess: { @MainActor in
+                    onSuccess: {
                         dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "institutional"])
                         onSuccess()
                     }

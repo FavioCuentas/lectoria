@@ -31,14 +31,14 @@ public final class InstitutionalAuthViewModel {
 
     private let institutionService: any InstitutionService
     private let authService: any AuthService
-    private let onGuestMigrate: @Sendable (String) async -> Void
-    private let onSuccess: @Sendable () -> Void
+    private let onGuestMigrate: @MainActor @Sendable (String) async -> Void
+    private let onSuccess: @MainActor @Sendable () -> Void
 
     public init(
         institutionService: any InstitutionService,
         authService: any AuthService,
-        onGuestMigrate: @escaping @Sendable (String) async -> Void,
-        onSuccess: @escaping @Sendable () -> Void
+        onGuestMigrate: @escaping @MainActor @Sendable (String) async -> Void,
+        onSuccess: @escaping @MainActor @Sendable () -> Void
     ) {
         self.institutionService = institutionService
         self.authService = authService
