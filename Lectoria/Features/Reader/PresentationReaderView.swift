@@ -529,7 +529,7 @@ struct PresentationReaderView: View {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 HStack {
                     Text(inlineBubbleTitle)
-                        .font(isPad ? AppTypography.title3 : AppTypography.bodyBold)
+                        .font(isPad ? AppTypography.title2 : AppTypography.bodyBold)
                         .foregroundStyle(AppColor.textPrimary(for: theme))
 
                     Spacer()
@@ -594,7 +594,7 @@ struct PresentationReaderView: View {
         NavigationStack {
             VStack(spacing: AppSpacing.md) {
                 Picker("Categoría", selection: Binding(
-                    get: { pendingCategory ?? .important },
+                    get: { pendingCategory ?? .mainIdea },
                     set: { pendingCategory = $0 }
                 )) {
                     ForEach(HighlightCategory.userSelectableCases, id: \.self) { cat in
@@ -627,7 +627,7 @@ struct PresentationReaderView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Guardar") {
-                        let cat = pendingCategory ?? .important
+                        let cat = pendingCategory ?? .mainIdea
                         createHighlight(category: cat, customNoteBody: noteBody)
                         showNoteEditor = false
                     }
@@ -642,11 +642,14 @@ struct PresentationReaderView: View {
 
     private func categoryColor(_ category: HighlightCategory) -> Color {
         switch category {
-        case .important: Color(red: 0.95, green: 0.77, blue: 0.06)
-        case .definition: Color(red: 0.20, green: 0.60, blue: 0.86)
-        case .example: Color(red: 0.18, green: 0.80, blue: 0.44)
+        case .mainIdea: Color(red: 0.95, green: 0.77, blue: 0.06)
+        case .evidence: Color(red: 0.20, green: 0.60, blue: 0.86)
+        case .action: Color(red: 0.18, green: 0.80, blue: 0.44)
         case .question: Color(red: 0.91, green: 0.30, blue: 0.24)
-        case .study: Color(red: 0.90, green: 0.49, blue: 0.13)
+        case .quote: Color(red: 0.90, green: 0.49, blue: 0.13)
+        case .dictionary: Color.blue
+        case .translation: Color.green
+        case .ai: Color.purple
         }
     }
 
@@ -656,6 +659,7 @@ struct PresentationReaderView: View {
 
         let newAnn = PresentationAnnotation(
             documentID: record.id.uuidString,
+            slideID: "slide_\(currentSlideIndex + 1)",
             slideIndex: currentSlideIndex,
             selectedText: textToHighlight,
             categoryID: category.rawValue,

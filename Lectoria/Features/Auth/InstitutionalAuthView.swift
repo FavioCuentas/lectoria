@@ -83,7 +83,7 @@ struct InstitutionalAuthView: View {
                     onGuestMigrate: { userID in
                         await dependencies.migrateGuestData(to: userID)
                     },
-                    onSuccess: {
+                    onSuccess: { @MainActor in
                         dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "institutional"])
                         onSuccess()
                     }

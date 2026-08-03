@@ -37,7 +37,6 @@ struct PublicationCard: View {
     }
 
     var body: some View {
-        let theme = themeManager.currentTheme
         Group {
             switch style {
             case .grid: gridCard
