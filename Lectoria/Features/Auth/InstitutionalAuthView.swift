@@ -80,7 +80,7 @@ struct InstitutionalAuthView: View {
                 let vm = InstitutionalAuthViewModel(
                     institutionService: dependencies.institutionService,
                     authService: dependencies.authService,
-                    onGuestMigrate: { userID in
+                    onGuestMigrate: { @MainActor userID in
                         await dependencies.migrateGuestData(to: userID)
                     },
                     onSuccess: { @MainActor in
