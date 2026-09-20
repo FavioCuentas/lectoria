@@ -38,7 +38,7 @@ public final class SupabaseAnalyticsService: AnalyticsService, @unchecked Sendab
     public func track(_ name: AnalyticsEventName, properties: [String: Any] = [:]) {
         guard privacyManager.isAnalyticsEnabled else { return }
 
-        let sanitizedProps = PropertySanitizer.sanitize(properties)
+        let sanitizedProps = PropertySanitizer.sanitize(properties, for: name)
         let installationID = AnonymousIdentityManager.shared.installationID
         let userID = authService.currentUser?.id
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"

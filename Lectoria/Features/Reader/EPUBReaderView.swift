@@ -16,11 +16,13 @@ struct EPUBReaderView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppDependencies.self) private var dependencies
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     // Estado del ciclo de vida del lector
     @State private var adapter = EPUBReaderAdapter()
     @State private var isLoading = true
     @State private var loadingError: String? = nil
+    @State private var sessionCoordinator: ReadingSessionCoordinator?
     
     // Ubicación de lectura y navegación
     @State private var initialLocation: EPUBLocation? = nil
@@ -123,7 +125,11 @@ struct EPUBReaderView: View {
                 saveReadingProgress(location: newValue)
             }
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            sessionCoordinator?.handleScenePhaseChange(newPhase)
+        }
         .onDisappear {
+            sessionCoordinator?.endSession()
             Task {
                 await adapter.close()
             }
@@ -503,6 +509,17 @@ struct EPUBReaderView: View {
             self.tocItems = (try? await adapter.tableOfContents()) ?? []
             
             self.isLoading = false
+
+            if sessionCoordinator == nil {
+                let coordinator = ReadingSessionCoordinator(
+                    publicationID: record.id,
+                    format: record.publicationType.analyticsFormat,
+                    analyticsService: dependencies.analyticsService,
+                    readingSessionRepository: dependencies.readingSessionRepository
+                )
+                coordinator.startSession()
+                self.sessionCoordinator = coordinator
+            }
         } catch {
             self.loadingError = error.localizedDescription
             self.isLoading = false

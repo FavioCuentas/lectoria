@@ -13,6 +13,7 @@ struct PresentationReaderView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(ThemeManager.self) private var themeManager
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(AppDependencies.self) private var dependencies
 
     @State private var fileURL: URL?
@@ -20,6 +21,7 @@ struct PresentationReaderView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showShareSheet = false
+    @State private var sessionCoordinator: ReadingSessionCoordinator?
 
     // Control de navegación por páginas / diapositivas
     @State private var currentSlideIndex: Int = 0
@@ -313,6 +315,12 @@ struct PresentationReaderView: View {
         }
         .task {
             await resolveAndPrepareFile()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            sessionCoordinator?.handleScenePhaseChange(newPhase)
+        }
+        .onDisappear {
+            sessionCoordinator?.endSession()
         }
         .sheet(isPresented: $showNoteEditor) {
             noteEditorSheet(theme: theme)
@@ -809,6 +817,17 @@ struct PresentationReaderView: View {
                 self.totalSlides = parsedSlides.count
             }
             self.isLoading = false
+
+            if sessionCoordinator == nil {
+                let coordinator = ReadingSessionCoordinator(
+                    publicationID: record.id,
+                    format: record.publicationType.analyticsFormat,
+                    analyticsService: dependencies.analyticsService,
+                    readingSessionRepository: dependencies.readingSessionRepository
+                )
+                coordinator.startSession()
+                self.sessionCoordinator = coordinator
+            }
         } else {
             self.errorMessage = String(localized: "El archivo de la presentación no fue encontrado en el almacenamiento local.", comment: "File missing error")
             self.isLoading = false

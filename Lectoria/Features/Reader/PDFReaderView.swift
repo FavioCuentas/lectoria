@@ -14,11 +14,13 @@ struct PDFReaderView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppDependencies.self) private var dependencies
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     // Estado del ciclo de vida del lector
     @State private var adapter = PDFReaderAdapter()
     @State private var isLoading = true
     @State private var loadingError: String? = nil
+    @State private var sessionCoordinator: ReadingSessionCoordinator?
     
     // Referencia al PDFView nativo para asociar con miniaturas
     @State private var pdfViewReference: PDFView? = nil
@@ -144,7 +146,11 @@ struct PDFReaderView: View {
                 saveReadingProgress(location: newValue)
             }
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            sessionCoordinator?.handleScenePhaseChange(newPhase)
+        }
         .onDisappear {
+            sessionCoordinator?.endSession()
             Task {
                 await adapter.close()
             }
@@ -749,6 +755,17 @@ struct PDFReaderView: View {
             await loadHighlights()
             
             self.isLoading = false
+
+            if sessionCoordinator == nil {
+                let coordinator = ReadingSessionCoordinator(
+                    publicationID: record.id,
+                    format: record.publicationType.analyticsFormat,
+                    analyticsService: dependencies.analyticsService,
+                    readingSessionRepository: dependencies.readingSessionRepository
+                )
+                coordinator.startSession()
+                self.sessionCoordinator = coordinator
+            }
         } catch {
             self.loadingError = error.localizedDescription
             self.isLoading = false

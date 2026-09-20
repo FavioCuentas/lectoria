@@ -44,6 +44,18 @@ public enum PublicationType: String, Codable, Sendable, CaseIterable, Identifiab
         }
     }
 
+    /// Formato normalizado y privado para la telemetría de analítica.
+    public var analyticsFormat: String {
+        switch self {
+        case .epub: "epub"
+        case .pdf: "pdf"
+        case .txt: "txt"
+        case .markdown: "markdown"
+        case .pastedText: "pasted_text"
+        case .pptx: "pptx"
+        }
+    }
+
     // MARK: - File metadata
 
     /// Extensiones de archivo asociadas (sin punto).

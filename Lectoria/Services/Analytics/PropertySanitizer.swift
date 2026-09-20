@@ -8,11 +8,31 @@ public struct PropertySanitizer: Sendable {
         "title", "author", "text", "selectedtext", "selected_text", "highlighttext",
         "highlight_text", "notebody", "note_body", "query", "prompt", "response",
         "email", "name", "token", "password", "filepath", "file_path", "filename", "file_name",
-        "url", "search_term", "searchterm", "word", "definition"
+        "url", "search_term", "searchterm", "word", "definition",
+        "document_id", "documentid", "publication_id", "publicationid", "doc_id", "uuid", "id"
+    ]
+
+    /// Formatos permitidos exclusivamente para reading_session_ended.
+    public static let allowedReadingSessionFormats: Set<String> = [
+        "pdf", "epub", "txt", "markdown", "pptx", "pasted_text"
+    ]
+
+    /// Claves permitidas exclusivamente para reading_session_ended (Allowlist cerrada).
+    public static let allowedReadingSessionKeys: Set<String> = [
+        "duration_seconds", "format"
     ]
 
     /// Sanitiza un diccionario de propiedades eliminando claves prohibidas y garantizando que solo contenga metadatos agregados.
     public static func sanitize(_ properties: [String: Any]) -> [String: String] {
+        sanitize(properties, for: nil)
+    }
+
+    /// Sanitiza aplicando reglas generales o allowlist estricta según el tipo de evento.
+    public static func sanitize(_ properties: [String: Any], for eventName: AnalyticsEventName?) -> [String: String] {
+        if eventName == .readingSessionEnded {
+            return sanitizeReadingSessionProperties(properties)
+        }
+
         var sanitized: [String: String] = [:]
 
         for (key, value) in properties {
@@ -36,6 +56,31 @@ public struct PropertySanitizer: Sendable {
         }
 
         return sanitized
+    }
+
+    private static func sanitizeReadingSessionProperties(_ properties: [String: Any]) -> [String: String] {
+        var result: [String: String] = [:]
+
+        // 1. duration_seconds
+        if let durationVal = properties["duration_seconds"] {
+            if let intVal = durationVal as? Int {
+                result["duration_seconds"] = String(max(0, intVal))
+            } else if let doubleVal = durationVal as? Double {
+                result["duration_seconds"] = String(max(0, Int(doubleVal)))
+            } else if let strVal = durationVal as? String, let intParsed = Int(strVal) {
+                result["duration_seconds"] = String(max(0, intParsed))
+            }
+        }
+
+        // 2. format
+        if let formatVal = properties["format"] as? String {
+            let normalized = formatVal.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            if allowedReadingSessionFormats.contains(normalized) {
+                result["format"] = normalized
+            }
+        }
+
+        return result
     }
 
     /// Clasifica el tamaño de un archivo en rangos anonimizados (buckets).

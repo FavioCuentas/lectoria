@@ -238,6 +238,11 @@ public final class ImportService: Sendable {
 
         try await publicationRepository.save(record)
 
+        analyticsService?.track(.documentImported, properties: [
+            "format": "pasted_text",
+            "file_size_bucket": PropertySanitizer.bucketFileSize(fileSize)
+        ])
+
         return record
     }
 }

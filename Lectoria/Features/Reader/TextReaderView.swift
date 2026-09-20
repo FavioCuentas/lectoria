@@ -14,12 +14,14 @@ struct TextReaderView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppDependencies.self) private var dependencies
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     // Estado del ciclo de vida del lector
     @State private var textAdapter = TextReaderAdapter()
     @State private var pptxAdapter = PPTXReaderAdapter()
     @State private var isLoading = true
     @State private var loadingError: String? = nil
+    @State private var sessionCoordinator: ReadingSessionCoordinator?
 
     private var blocks: [TextBlock] {
         record.publicationType == .pptx ? pptxAdapter.blocks : textAdapter.blocks
@@ -193,7 +195,11 @@ struct TextReaderView: View {
                 saveReadingProgress(location: newValue)
             }
         }
+        .onChange(of: scenePhase) { _, newPhase in
+            sessionCoordinator?.handleScenePhaseChange(newPhase)
+        }
         .onDisappear {
+            sessionCoordinator?.endSession()
             Task {
                 await closeAdapter()
             }
@@ -963,6 +969,18 @@ struct TextReaderView: View {
             await loadHighlights()
 
             self.isLoading = false
+
+            // Iniciar sesión de telemetría una vez abierto el documento con éxito
+            if sessionCoordinator == nil {
+                let coordinator = ReadingSessionCoordinator(
+                    publicationID: record.id,
+                    format: record.publicationType.analyticsFormat,
+                    analyticsService: dependencies.analyticsService,
+                    readingSessionRepository: dependencies.readingSessionRepository
+                )
+                coordinator.startSession()
+                self.sessionCoordinator = coordinator
+            }
 
             // 6. Navegar a la posición inicial guardada con un pequeño delay de rendering
             if let initial = initialLocation {
