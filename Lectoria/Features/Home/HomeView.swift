@@ -6,6 +6,15 @@ import SwiftUI
 ///
 /// Diseño limpio inspirado en Kindle: saludo simple,
 /// tarjeta de continuar leyendo, acciones discretas.
+struct InteractiveButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.75 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 struct HomeView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppRouter.self) private var router
@@ -231,7 +240,7 @@ struct HomeView: View {
                             y: AppShadow.subtle(for: theme).y)
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(InteractiveButtonStyle())
                 .contextMenu {
                     // Fijar / Desfijar
                     Button {
@@ -318,6 +327,7 @@ struct HomeView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
                 .contentShape(Rectangle())
             }
+            .buttonStyle(InteractiveButtonStyle())
 
             Button {
                 router.showNewText()
@@ -339,8 +349,8 @@ struct HomeView: View {
                 )
                 .contentShape(Rectangle())
             }
+            .buttonStyle(InteractiveButtonStyle())
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Recent
@@ -353,12 +363,18 @@ struct HomeView: View {
                     .foregroundStyle(AppColor.textSecondary(for: theme))
                 Spacer()
                 Button {
-                    router.selectedTab = .library
+                    withAnimation {
+                        router.selectedTab = .library
+                    }
                 } label: {
                     Text(String(localized: "Ver todo", comment: "Home: see all"))
                         .font(AppTypography.caption)
                         .foregroundStyle(AppColor.accent(for: theme))
+                        .padding(.vertical, AppSpacing.xs)
+                        .padding(.horizontal, AppSpacing.sm)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(InteractiveButtonStyle())
             }
 
             if recentPublications.isEmpty {
