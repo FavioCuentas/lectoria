@@ -48,6 +48,7 @@ struct LectoriaApp: App {
                 if showSplash {
                     SplashScreenView()
                         .transition(.opacity)
+                        .allowsHitTesting(false)
                 }
             }
             .environment(themeManager)
