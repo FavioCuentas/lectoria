@@ -58,8 +58,13 @@ struct RootView: View {
                     .zIndex(999)
             }
         }
-        .sheet(isPresented: $router.isShowingNewText) {
+        .sheet(isPresented: $router.isShowingNewText, onDismiss: {
+            router.handleNewTextDismissal()
+        }) {
             NewTextView()
+                .environment(themeManager)
+                .environment(router)
+                .environment(dependencies)
         }
         .onChange(of: router.pendingImportURL) { _, newURL in
             if let url = newURL {

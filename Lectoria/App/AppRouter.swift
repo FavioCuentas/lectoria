@@ -64,6 +64,9 @@ final class AppRouter {
     /// Indica si debe mostrar el sheet de importación.
     var isShowingImport = false
 
+    /// Publicación recién creada pendiente de navegación tras el cierre del sheet modal.
+    var pendingCreatedPublication: PublicationRecord? = nil
+
     /// URL del archivo seleccionado para ser procesado por el servicio de importación.
     var pendingImportURL: URL? = nil
 
@@ -96,8 +99,17 @@ final class AppRouter {
         }
     }
 
-    /// Abre el flujo de creación de texto pegado.
+    /// Abre el flujo de creación de texto pegado con protección contra pulsaciones repetidas.
     func showNewText() {
+        guard !isShowingNewText else { return }
         isShowingNewText = true
+    }
+
+    /// Consume y ejecuta la navegación pendiente si existe tras el descarte del sheet modal.
+    func handleNewTextDismissal() {
+        guard let publication = pendingCreatedPublication else { return }
+        pendingCreatedPublication = nil
+        selectedTab = .library
+        selectedPublication = publication
     }
 }

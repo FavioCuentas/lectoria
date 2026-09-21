@@ -56,6 +56,7 @@ struct NewTextView: View {
                         .font(AppTypography.body)
                         .padding(AppSpacing.xs)
                         .frame(maxHeight: .infinity)
+                        .scrollContentBackground(.hidden)
                         .background(AppColor.surface(for: theme))
                         .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
                         .overlay(
@@ -89,6 +90,7 @@ struct NewTextView: View {
                 }
             }
         }
+        .interactiveDismissDisabled(isLoading)
         .preferredColorScheme(theme.colorScheme)
         .onAppear {
             if let clipboardString = UIPasteboard.general.string,
@@ -113,14 +115,16 @@ struct NewTextView: View {
         Task {
             do {
                 let record = try await dependencies.importService.importPastedText(text: content, title: title)
-                isLoading = false
-                dismiss()
-                // Navegar automáticamente al nuevo texto
-                router.selectedTab = .library
-                router.selectedPublication = record
+                await MainActor.run {
+                    isLoading = false
+                    router.pendingCreatedPublication = record
+                    dismiss()
+                }
             } catch {
-                isLoading = false
-                errorMessage = error.localizedDescription
+                await MainActor.run {
+                    isLoading = false
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
