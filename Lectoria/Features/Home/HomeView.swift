@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var selectedPublication: PublicationRecord? = nil
 
     var body: some View {
+        @Bindable var router = router
         let theme = themeManager.currentTheme
 
         ScrollView(showsIndicators: false) {
@@ -60,6 +61,13 @@ struct HomeView: View {
         .background(AppColor.background(for: theme))
         .navigationTitle(String(localized: "Inicio", comment: "Home screen title"))
         .navigationBarTitleDisplayMode(.inline)
+        .fileImporter(
+            isPresented: $router.isShowingImport,
+            allowedContentTypes: PublicationType.allSupportedUTTypes,
+            allowsMultipleSelection: false
+        ) { result in
+            router.handleImportResult(result)
+        }
         .navigationDestination(item: $selectedPublication) { record in
             switch record.publicationType {
             case .pdf:

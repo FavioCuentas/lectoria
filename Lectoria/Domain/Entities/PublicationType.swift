@@ -128,4 +128,33 @@ public enum PublicationType: String, Codable, Sendable, CaseIterable, Identifiab
     public var isFileBased: Bool {
         self != .pastedText
     }
+
+    /// Todos los tipos UTType soportados para el selector de archivos (`.fileImporter`).
+    /// Excluye tipos comodín como `.data`, `.item`, `.content` o ZIP genérico para evitar que el usuario
+    /// seleccione archivos que el flujo de importación (`ImportService`) no puede procesar.
+    public static var allSupportedUTTypes: [UTType] {
+        let rawList: [UTType?] = [
+            .pdf,
+            .plainText,
+            UTType("org.idpf.epub-container"),
+            UTType(filenameExtension: "epub"),
+            UTType(filenameExtension: "md"),
+            UTType(filenameExtension: "markdown"),
+            UTType("org.openxmlformats.presentationml.presentation"),
+            UTType("com.microsoft.powerpoint.ppt"),
+            UTType(filenameExtension: "pptx"),
+            UTType(filenameExtension: "ppt"),
+            UTType(filenameExtension: "pps"),
+            UTType(filenameExtension: "ppsx"),
+            UTType(filenameExtension: "key"),
+            UTType(filenameExtension: "odp")
+        ]
+        var unique: [UTType] = []
+        for t in rawList.compactMap({ $0 }) {
+            if !unique.contains(t) {
+                unique.append(t)
+            }
+        }
+        return unique
+    }
 }

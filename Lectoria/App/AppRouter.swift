@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 // MARK: - AppTab
 
@@ -63,6 +64,9 @@ final class AppRouter {
     /// Indica si debe mostrar el sheet de importación.
     var isShowingImport = false
 
+    /// URL del archivo seleccionado para ser procesado por el servicio de importación.
+    var pendingImportURL: URL? = nil
+
     /// Indica si debe mostrar el selector de creación de texto.
     var isShowingNewText = false
 
@@ -71,9 +75,25 @@ final class AppRouter {
         selectedTab = tab
     }
 
-    /// Abre el flujo de importación.
+    private static let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "AppRouter")
+
+    /// Abre el flujo de importación con protección contra pulsaciones repetidas.
     func showImport() {
+        guard !isShowingImport else { return }
         isShowingImport = true
+    }
+
+    /// Maneja el resultado del selector de archivos (`.fileImporter`).
+    func handleImportResult(_ result: Result<[URL], Error>) {
+        isShowingImport = false
+        switch result {
+        case .success(let urls):
+            if let url = urls.first {
+                pendingImportURL = url
+            }
+        case .failure:
+            Self.logger.error("Error al seleccionar archivo en el selector del sistema.")
+        }
     }
 
     /// Abre el flujo de creación de texto pegado.

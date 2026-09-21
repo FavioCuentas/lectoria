@@ -55,31 +55,17 @@ struct RootView: View {
             if showImportStatus {
                 importStatusOverlay(theme: theme)
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
-            }
-        }
-        .fileImporter(
-            isPresented: $router.isShowingImport,
-            allowedContentTypes: [
-                .pdf,
-                UTType(filenameExtension: "epub") ?? .data,
-                .plainText,
-                UTType(filenameExtension: "md") ?? .plainText,
-                UTType(filenameExtension: "pptx") ?? .data,
-                UTType(filenameExtension: "ppt") ?? .data
-            ],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    importFile(at: url)
-                }
-            case .failure(let error):
-                print("Error al seleccionar archivo: \(error.localizedDescription)")
+                    .zIndex(999)
             }
         }
         .sheet(isPresented: $router.isShowingNewText) {
             NewTextView()
+        }
+        .onChange(of: router.pendingImportURL) { _, newURL in
+            if let url = newURL {
+                router.pendingImportURL = nil
+                importFile(at: url)
+            }
         }
     }
 
