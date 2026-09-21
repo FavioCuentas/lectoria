@@ -28,8 +28,8 @@ struct InstitutionalAuthView: View {
 
                         // MARK: - Contenido según Estado
                         switch viewModel.state {
-                        case .idle, .validatingInstitution, .failed:
-                            if viewModel.route == .code {
+                        case .idle, .validatingInstitution, .failed(_):
+                            if viewModel.route == InstitutionalRoute.code {
                                 codeStepView(theme: theme, viewModel: viewModel)
                             } else {
                                 emailStepView(theme: theme, viewModel: viewModel)
@@ -84,7 +84,7 @@ struct InstitutionalAuthView: View {
                         await dependencies.migrateGuestData(to: userID)
                     },
                     onSuccess: {
-                        dependencies.analyticsService.track(.userSignedIn, properties: ["auth_provider": "institutional"])
+                        dependencies.analyticsService.track(AnalyticsEventName.userSignedIn, properties: ["auth_provider": "institutional"])
                         onSuccess()
                     }
                 )
@@ -118,12 +118,12 @@ struct InstitutionalAuthView: View {
 
     private func headerSubtitle(for viewModel: InstitutionalAuthViewModel) -> String {
         switch viewModel.state {
-        case .awaitingOTP:
+        case .awaitingOTP(_):
             return "Ingresa el código de 6 dígitos enviado a tu correo institucional."
         case .institutionValidated(let inst):
             return "Código válido para \(inst.name). Ingresa tu correo para continuar."
         default:
-            return viewModel.route == .code
+            return viewModel.route == InstitutionalRoute.code
                 ? "Ingresa el código proporcionado por tu universidad o institución."
                 : "Ingresa el correo proporcionado por tu universidad, colegio o centro educativo."
         }
@@ -338,14 +338,14 @@ struct InstitutionalAuthView: View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
             Button {
                 withAnimation {
-                    let nextRoute: InstitutionalRoute = (viewModel.route == .code) ? .email : .code
+                    let nextRoute: InstitutionalRoute = (viewModel.route == InstitutionalRoute.code) ? .email : .code
                     viewModel.selectRoute(nextRoute)
                 }
             } label: {
                 HStack {
-                    Image(systemName: viewModel.route == .code ? "envelope.fill" : "key.fill")
+                    Image(systemName: viewModel.route == InstitutionalRoute.code ? "envelope.fill" : "key.fill")
                         .font(.system(size: 16))
-                    Text(viewModel.route == .code ? "Ingresar con mi correo institucional" : "Tengo un código de acceso")
+                    Text(viewModel.route == InstitutionalRoute.code ? "Ingresar con mi correo institucional" : "Tengo un código de acceso")
                         .font(AppTypography.callout.weight(.semibold))
                 }
                 .frame(minHeight: 44)
