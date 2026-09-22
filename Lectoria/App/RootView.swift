@@ -24,29 +24,37 @@ struct RootView: View {
 
         ZStack {
             TabView(selection: $router.selectedTab) {
-                Tab(AppTab.home.title, systemImage: AppTab.home.systemImage, value: .home) {
-                    NavigationStack {
-                        HomeView()
-                    }
+                NavigationStack {
+                    HomeView()
                 }
+                .tabItem {
+                    Label(AppTab.home.title, systemImage: router.selectedTab == .home ? AppTab.home.selectedSystemImage : AppTab.home.systemImage)
+                }
+                .tag(AppTab.home)
 
-                Tab(AppTab.library.title, systemImage: AppTab.library.systemImage, value: .library) {
-                    NavigationStack {
-                        LibraryView()
-                    }
+                NavigationStack {
+                    LibraryView()
                 }
+                .tabItem {
+                    Label(AppTab.library.title, systemImage: router.selectedTab == .library ? AppTab.library.selectedSystemImage : AppTab.library.systemImage)
+                }
+                .tag(AppTab.library)
 
-                Tab(AppTab.notes.title, systemImage: AppTab.notes.systemImage, value: .notes) {
-                    NavigationStack {
-                        NotesView()
-                    }
+                NavigationStack {
+                    NotesView()
                 }
+                .tabItem {
+                    Label(AppTab.notes.title, systemImage: AppTab.notes.systemImage)
+                }
+                .tag(AppTab.notes)
 
-                Tab(AppTab.profile.title, systemImage: AppTab.profile.systemImage, value: .profile) {
-                    NavigationStack {
-                        ProfileView()
-                    }
+                NavigationStack {
+                    ProfileView()
                 }
+                .tabItem {
+                    Label(AppTab.profile.title, systemImage: router.selectedTab == .profile ? AppTab.profile.selectedSystemImage : AppTab.profile.systemImage)
+                }
+                .tag(AppTab.profile)
             }
             .tint(AppColor.accent(for: theme))
             .preferredColorScheme(theme.colorScheme)
