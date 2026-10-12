@@ -12,8 +12,9 @@ struct PresentationReaderView: View {
     let record: PublicationRecord
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(ThemeManager.self) private var themeManager
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(ThemeManager.self) private var themeManager
     @Environment(AppDependencies.self) private var dependencies
 
     @State private var fileURL: URL?
@@ -25,13 +26,15 @@ struct PresentationReaderView: View {
 
     // Control de navegación por páginas / diapositivas
     @State private var currentSlideIndex: Int = 0
-    @State private var totalSlides: Int = 1
+    @State private var totalSlides: Int = 0
     @State private var lastJumpOriginIndex: Int? = nil
     @State private var showGoToPageDialog = false
     @State private var goToPageText = ""
 
     // Estados de interfaz adaptativa estilo Keynote
     @State private var isFullscreen = false
+    @State private var showThumbnails = false
+    @State private var notesSession = PresentationNotesSession()
 
     // Sistema de notas y anotaciones de Lectoría
     @State private var notes: [Note] = []
@@ -57,222 +60,631 @@ struct PresentationReaderView: View {
     @State private var inlineBubbleText = ""
     @State private var isLoadingInline = false
 
-    var body: some View {
-        let theme = themeManager.currentTheme
-        let progressPercent = Double(currentSlideIndex) / Double(max(1, totalSlides - 1))
+    private var hasNotesOnCurrentSlide: Bool {
+        notes.contains { $0.anchor == "slide_\(currentSlideIndex + 1)" } ||
+        presentationAnnotations.contains { $0.slideIndex == currentSlideIndex }
+    }
 
-        ZStack {
-            VStack(spacing: 0) {
-                // 1. Barra de herramientas superior personalizada (ocultable en pantalla completa)
-                if !isFullscreen {
-                    HStack(spacing: AppSpacing.sm) {
+    private var hasAnyNotesInPresentation: Bool {
+        !notes.isEmpty || !presentationAnnotations.isEmpty
+    }
+
+    private var notesBadgeVisible: Bool {
+        if isIndexableNavigationSupported {
+            return hasNotesOnCurrentSlide
+        } else {
+            return hasAnyNotesInPresentation
+        }
+    }
+
+    private var quickLookEffectiveAnchor: String {
+        notesSession.quickLookAnchor(totalSlides: totalSlides)
+    }
+
+    private var quickLookEffectiveTitle: String {
+        notesSession.quickLookTitle(totalSlides: totalSlides)
+    }
+
+    private var progressPercent: Double {
+        guard totalSlides > 1 else { return totalSlides == 1 ? 1.0 : 0.0 }
+        let clamped = max(0, min(currentSlideIndex, totalSlides - 1))
+        return Double(clamped) / Double(totalSlides - 1)
+    }
+
+    private var progressPercentageText: String {
+        guard totalSlides > 0 else { return "0%" }
+        if totalSlides == 1 { return "100%" }
+        return String(format: "%.0f%%", progressPercent * 100)
+    }
+
+    private var slideProgressDescription: String {
+        guard totalSlides > 0 else {
+            return String(localized: "Sin diapositivas", comment: "No slides progress label")
+        }
+        let currentHumanPage = min(currentSlideIndex + 1, totalSlides)
+        return String(localized: "Diapositiva \(currentHumanPage) de \(totalSlides) · \(progressPercentageText)", comment: "Slide progress label")
+    }
+
+    private var isIndexableNavigationSupported: Bool {
+        pdfDocument != nil
+    }
+
+    private var annotatedSlideIndices: Set<Int> {
+        var set = Set(presentationAnnotations.map(\.slideIndex))
+        for note in notes {
+            if let anchor = note.anchor, anchor.hasPrefix("slide_"), let idx = Int(anchor.dropFirst(6)) {
+                set.insert(idx - 1)
+            }
+        }
+        return set
+    }
+
+    private var iphoneDrawerTitle: String {
+        guard totalSlides > 0 else {
+            return String(localized: "Sin diapositivas", comment: "Empty slides drawer title")
+        }
+        if !isIndexableNavigationSupported {
+            return String(localized: "Diapositivas (\(totalSlides))", comment: "QuickLook slide count")
+        } else {
+            return String(localized: "Diapositivas (\(min(currentSlideIndex + 1, totalSlides))/\(totalSlides))", comment: "Slide drawer count")
+        }
+    }
+
+    private var notesAccessibilityLabel: String {
+        if isIndexableNavigationSupported {
+            return String(localized: "Notas de esta diapositiva", comment: "Slide notes action label")
+        } else {
+            return String(localized: "Notas de la presentación", comment: "Presentation notes action label")
+        }
+    }
+
+    private var notesAccessibilityValue: String {
+        if isIndexableNavigationSupported {
+            return hasNotesOnCurrentSlide
+                ? String(localized: "Contiene notas", comment: "Slide has notes status")
+                : String(localized: "Sin notas", comment: "Slide without notes status")
+        } else {
+            return hasAnyNotesInPresentation
+                ? String(localized: "La presentación contiene notas", comment: "Presentation has notes status")
+                : String(localized: "Sin notas", comment: "Presentation without notes status")
+        }
+    }
+
+    private var notesAccessibilityHint: String {
+        if isIndexableNavigationSupported {
+            return String(localized: "Toca para abrir las notas y clasificaciones de esta diapositiva", comment: "Slide notes action hint")
+        } else {
+            return String(localized: "Toca para abrir o crear notas de la presentación", comment: "Presentation notes action hint")
+        }
+    }
+
+    @ViewBuilder
+    private func notesToolbarButton(theme: AppTheme) -> some View {
+        Button {
+            if notesSession.isSheetPresented {
+                notesSession.close()
+            } else {
+                notesSession.open(isIndexableNavigationSupported: isIndexableNavigationSupported,
+                                  currentSlideIndex: currentSlideIndex)
+            }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "note.text")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(notesSession.isSheetPresented || notesBadgeVisible ? AppColor.accent(for: theme) : AppColor.textPrimary(for: theme))
+                    .frame(width: 36, height: 36)
+                    .background(AppColor.surfaceSecondary(for: theme))
+                    .clipShape(Circle())
+
+                if notesBadgeVisible {
+                    Circle()
+                        .fill(AppColor.accent(for: theme))
+                        .frame(width: 8, height: 8)
+                        .offset(x: -2, y: 2)
+                }
+            }
+        }
+        .accessibilityLabel(notesAccessibilityLabel)
+        .accessibilityValue(notesAccessibilityValue)
+        .accessibilityHint(notesAccessibilityHint)
+    }
+
+    @ViewBuilder
+    private func topBar(theme: AppTheme) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: AppSpacing.sm) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .frame(width: 36, height: 36)
+                        .background(AppColor.surfaceSecondary(for: theme))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel(String(localized: "Volver", comment: "Back action label"))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(record.title)
+                        .font(AppTypography.captionBold)
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .lineLimit(1)
+
+                    if isIndexableNavigationSupported {
                         Button {
-                            dismiss()
+                            guard totalSlides > 0 else { return }
+                            goToPageText = "\(currentSlideIndex + 1)"
+                            showGoToPageDialog = true
                         } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(AppColor.textPrimary(for: theme))
-                                .frame(width: 36, height: 36)
-                                .background(AppColor.surfaceSecondary(for: theme))
-                                .clipShape(Circle())
+                            Text(slideProgressDescription)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(totalSlides > 0 ? AppColor.accent(for: theme) : AppColor.textSecondary(for: theme))
                         }
-                        .accessibilityLabel(String(localized: "Volver", comment: "Back action label"))
+                        .disabled(totalSlides <= 0)
+                        .accessibilityLabel(String(localized: "Progreso de diapositivas", comment: "Slide progress label"))
+                        .accessibilityValue(slideProgressDescription)
+                        .accessibilityHint(String(localized: "Toca dos veces para ir a una diapositiva específica", comment: "Jump to slide hint"))
+                    } else {
+                        Text(String(localized: "Vista previa QuickLook · navegación mediante gestos", comment: "QuickLook navigation label"))
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                            .accessibilityLabel(String(localized: "Modo de lectura QuickLook", comment: "QuickLook mode accessibility label"))
+                            .accessibilityHint(String(localized: "Desliza para cambiar de diapositiva. QuickLook no reporta la diapositiva actual a la aplicación.", comment: "QuickLook navigation accessibility hint"))
+                    }
+                }
 
-                        Text(record.title)
-                            .font(AppTypography.bodyBold)
+                Spacer()
+
+                // Botón Notas
+                notesToolbarButton(theme: theme)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isFullscreen.toggle()
+                    }
+                } label: {
+                    Image(systemName: isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .frame(width: 36, height: 36)
+                        .background(AppColor.surfaceSecondary(for: theme))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel(String(localized: "Pantalla completa", comment: "Toggle fullscreen label"))
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showThumbnails.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(showThumbnails ? AppColor.accent(for: theme) : AppColor.textPrimary(for: theme))
+                        .frame(width: 36, height: 36)
+                        .background(AppColor.surfaceSecondary(for: theme))
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel(String(localized: "Miniaturas de diapositivas", comment: "Toggle thumbnail strip"))
+
+                if let fileURL {
+                    ShareLink(item: fileURL) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(AppColor.textPrimary(for: theme))
-                            .lineLimit(1)
+                            .frame(width: 36, height: 36)
+                            .background(AppColor.surfaceSecondary(for: theme))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel(String(localized: "Compartir presentación", comment: "Share presentation label"))
+                }
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.xs)
+            .background(AppColor.surface(for: theme))
+
+            if isIndexableNavigationSupported && totalSlides > 1 {
+                ProgressView(value: progressPercent, total: 1.0)
+                    .progressViewStyle(LinearProgressViewStyle(tint: AppColor.accent(for: theme)))
+                    .frame(height: 2)
+            }
+
+            Divider()
+                .background(AppColor.border(for: theme))
+        }
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
+    @ViewBuilder
+    private func iphoneDrawerHandle(theme: AppTheme) -> some View {
+        HStack {
+            Spacer()
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showThumbnails = true
+                }
+            } label: {
+                HStack(spacing: 2) {
+                    Image(systemName: "chevron.left")
+                        .font(.caption2.weight(.bold))
+                    Image(systemName: "sidebar.right")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(AppColor.accent(for: theme))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 10)
+                .background(AppColor.surface(for: theme))
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: AppRadius.sm, bottomLeadingRadius: AppRadius.sm))
+                .shadow(color: AppShadow.medium(for: theme).color, radius: AppShadow.medium(for: theme).radius, x: -2, y: 0)
+            }
+            .accessibilityLabel(String(localized: "Abrir miniaturas de diapositivas", comment: "Open thumbnail drawer label"))
+            .accessibilityHint(String(localized: "Muestra la lista de diapositivas en un panel lateral", comment: "Open thumbnail drawer hint"))
+        }
+        .transition(.move(edge: .trailing))
+    }
+
+    @ViewBuilder
+    private func iphoneDrawer(theme: AppTheme) -> some View {
+        ZStack {
+            Color.black.opacity(0.35)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showThumbnails = false
+                    }
+                }
+                .transition(.opacity)
+
+            HStack(spacing: 0) {
+                Spacer()
+
+                VStack(spacing: 0) {
+                    HStack {
+                        Text(iphoneDrawerTitle)
+                            .font(AppTypography.captionBold)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
 
                         Spacer()
 
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isFullscreen.toggle()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                showThumbnails = false
                             }
                         } label: {
-                            Image(systemName: isFullscreen ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(AppColor.textPrimary(for: theme))
-                                .frame(width: 36, height: 36)
-                                .background(AppColor.surfaceSecondary(for: theme))
-                                .clipShape(Circle())
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.title3)
+                                .foregroundStyle(AppColor.textTertiary(for: theme))
                         }
-                        .accessibilityLabel(String(localized: "Pantalla completa", comment: "Toggle fullscreen label"))
-
-                        if let fileURL {
-                            ShareLink(item: fileURL) {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(AppColor.textPrimary(for: theme))
-                                    .frame(width: 36, height: 36)
-                                    .background(AppColor.surfaceSecondary(for: theme))
-                                    .clipShape(Circle())
-                            }
-                        }
+                        .accessibilityLabel(String(localized: "Cerrar panel de diapositivas", comment: "Close thumbnail drawer label"))
                     }
                     .padding(.horizontal, AppSpacing.md)
                     .padding(.vertical, AppSpacing.xs)
-                    .background(AppColor.surface(for: theme))
 
                     Divider()
                         .background(AppColor.border(for: theme))
+
+                    PresentationThumbnailStripView(
+                        pdfDocument: pdfDocument,
+                        fileURL: fileURL,
+                        totalSlides: totalSlides,
+                        currentSlideIndex: $currentSlideIndex,
+                        isVertical: true,
+                        slidesWithNotesOrAnnotations: annotatedSlideIndices,
+                        canNavigate: isIndexableNavigationSupported,
+                        onSelectSlide: { index in
+                            guard isIndexableNavigationSupported else { return }
+                            if index != currentSlideIndex {
+                                lastJumpOriginIndex = currentSlideIndex
+                                currentSlideIndex = index
+                            }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                showThumbnails = false
+                            }
+                        }
+                    )
                 }
-
-                // 2. Área Central de Lectura (Diapositiva Central)
-                ZStack(alignment: .bottom) {
-                    AppColor.background(for: theme)
-                        .ignoresSafeArea()
-
-                    if let pdfDoc = pdfDocument {
-                        // Ruta A: PDFKit con Selección y Resaltado por Colores de Lectoría
-                        PDFPresentationPreviewWrapper(
-                            pdfDocument: pdfDoc,
-                            pageIndex: $currentSlideIndex,
-                            annotations: presentationAnnotations,
-                            onTextSelected: { text, bounds, slideIdx in
-                                activeSelectedText = text
-                                selectedText = text
-                                hasSelection = true
-                            },
-                            onSelectionCleared: {
-                                hasSelection = false
-                                selectedText = ""
-                            },
-                            onAddNoteRequest: { text, slideIdx in
-                                activeSelectedText = text
-                                selectedText = text
-                                noteBody = ""
-                                noteTags = ""
-                                showNoteEditor = true
-                            },
-                            onTranslateRequest: { text in
-                                selectedText = text
-                                triggerAIAction("translate_en")
+                .background(AppColor.surface(for: theme))
+                .shadow(color: AppShadow.medium(for: theme).color, radius: AppShadow.medium(for: theme).radius, x: -4, y: 0)
+            }
+            .transition(.move(edge: .trailing))
+            .gesture(
+                DragGesture()
+                    .onEnded { value in
+                        if value.translation.width > 50 {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                showThumbnails = false
                             }
-                        )
-                    } else if let fileURL, errorMessage == nil {
-                        // Ruta B: Quick Look nativo del original (.ppt / .pptx)
-                        QuickLookPreviewWrapper(fileURL: fileURL)
-                    } else if isLoading {
-                        VStack(spacing: AppSpacing.md) {
-                            ProgressView()
-                                .scaleEffect(1.2)
-                                .tint(AppColor.accent(for: theme))
-                            Text(String(localized: "Cargando presentación…", comment: "Reader: loading presentation"))
-                                .font(AppTypography.body)
-                                .foregroundStyle(AppColor.textSecondary(for: theme))
                         }
-                    } else if let errorMessage {
-                        errorView(message: errorMessage, theme: theme)
                     }
+            )
+        }
+    }
 
-                    // Botón flotante para salir de pantalla completa
-                    if isFullscreen {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                isFullscreen = false
-                            }
-                        } label: {
-                            Image(systemName: "arrow.down.right.and.arrow.up.left")
-                                .font(.subheadline.weight(.semibold))
-                                .padding(AppSpacing.xs)
-                                .background(AppColor.surface(for: theme).opacity(0.85))
-                                .foregroundStyle(AppColor.textPrimary(for: theme))
-                                .clipShape(Circle())
-                                .shadow(radius: 4)
-                        }
-                        .padding(.bottom, AppSpacing.md)
-                    }
-
-                    // Botón flotante para volver a la diapositiva previa tras un salto
-                    if let originIndex = lastJumpOriginIndex, originIndex != currentSlideIndex, !isFullscreen {
-                        Button {
-                            lastJumpOriginIndex = nil
-                            currentSlideIndex = originIndex
-                        } label: {
-                            HStack(spacing: AppSpacing.xs) {
-                                Image(systemName: "arrow.uturn.backward.circle.fill")
-                                    .font(.subheadline)
-                                Text(String(localized: "Volver a pág. \(originIndex + 1)", comment: "Reader: jump back button"))
-                                    .font(AppTypography.captionBold)
-                            }
-                            .padding(.horizontal, AppSpacing.md)
-                            .padding(.vertical, AppSpacing.xs)
-                            .background(AppColor.accent(for: theme))
-                            .foregroundStyle(.white)
-                            .clipShape(Capsule())
-                            .shadow(color: AppShadow.medium(for: theme).color,
-                                    radius: AppShadow.medium(for: theme).radius,
-                                    x: AppShadow.medium(for: theme).x,
-                                    y: AppShadow.medium(for: theme).y)
-                        }
-                        .padding(.bottom, AppSpacing.sm)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
-
-                // 3. Panel Inferior de Notas por Diapositiva (5 Categorías)
-                if !isFullscreen {
+    @ViewBuilder
+    private func notesSheetView(theme: AppTheme) -> some View {
+        NavigationStack {
+            VStack(spacing: AppSpacing.sm) {
+                if isIndexableNavigationSupported {
                     PresentationNotesPanelView(
-                        slideIndex: currentSlideIndex,
+                        slideIndex: notesSession.pdfTargetSlideIndex,
                         totalSlides: totalSlides,
                         existingNotes: notes,
+                        customAnchor: notesSession.pdfAnchor(),
+                        customTitle: String(localized: "Notas de la diapositiva \(notesSession.pdfTargetSlideIndex + 1)", comment: "Notes sheet title"),
+                        initiallyExpanded: true,
                         onSaveNote: { text, category in
+                            guard notesSession.pdfTargetSlideIndex >= 0,
+                                  notesSession.pdfTargetSlideIndex < totalSlides else { return }
+                            let targetAnchor = notesSession.pdfAnchor()
                             let newNote = Note(
                                 publicationID: record.id,
-                                anchor: "slide_\(currentSlideIndex + 1)",
+                                anchor: targetAnchor,
                                 body: text,
                                 tags: [category.rawValue]
                             )
                             notes.append(newNote)
                         }
                     )
+                } else {
+                    VStack(spacing: AppSpacing.xs) {
+                        HStack(alignment: .top, spacing: AppSpacing.xs) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(AppColor.warning(for: theme))
+                                .font(.subheadline)
+                            Text(String(localized: "QuickLook no puede detectar automáticamente la diapositiva visible.", comment: "QuickLook notes disclaimer"))
+                                .font(AppTypography.caption)
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                            Spacer()
+                        }
+                        .padding(AppSpacing.sm)
+                        .background(AppColor.surfaceSecondary(for: theme))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                        .padding(.horizontal, AppSpacing.md)
+
+                        if totalSlides > 0 {
+                            HStack {
+                                Text(String(localized: "Destino:", comment: "Note destination label"))
+                                    .font(AppTypography.captionBold)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                                Spacer()
+                                Picker(String(localized: "Destino de la nota", comment: "Note destination picker"), selection: $notesSession.quickLookNoteOption) {
+                                    Text(String(localized: "Nota general de la presentación", comment: "General note option"))
+                                        .tag(-1)
+                                    ForEach(0..<totalSlides, id: \.self) { idx in
+                                        Text(String(localized: "Diapositiva \(idx + 1)", comment: "Slide option"))
+                                            .tag(idx)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                            }
+                            .padding(.horizontal, AppSpacing.md)
+                        }
+
+                        PresentationNotesPanelView(
+                            slideIndex: max(0, notesSession.quickLookNoteOption),
+                            totalSlides: totalSlides,
+                            existingNotes: notes,
+                            customAnchor: quickLookEffectiveAnchor,
+                            customTitle: quickLookEffectiveTitle,
+                            initiallyExpanded: true,
+                            onSaveNote: { text, category in
+                                let targetAnchor = quickLookEffectiveAnchor
+                                let newNote = Note(
+                                    publicationID: record.id,
+                                    anchor: targetAnchor,
+                                    body: text,
+                                    tags: [category.rawValue]
+                                )
+                                notes.append(newNote)
+                            }
+                        )
+                    }
+                }
+                Spacer()
+            }
+            .navigationTitle(isIndexableNavigationSupported
+                ? String(localized: "Notas de la diapositiva", comment: "Notes sheet title")
+                : String(localized: "Notas de la presentación", comment: "QuickLook notes sheet title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "Cerrar", comment: "Close notes sheet")) {
+                        notesSession.close()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    var body: some View {
+        Group {
+            if record.localFileName.lowercased().hasSuffix(".pdf") {
+                pdfReaderBody
+            } else {
+                simplePresentationBody
+            }
+        }
+    }
+
+    private var simplePresentationBody: some View {
+        let theme = themeManager.currentTheme
+        return VStack(spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.left")
+                        .padding(AppSpacing.sm)
+                }
+                .accessibilityLabel("Volver")
+                Text(record.title)
+                    .font(AppTypography.captionBold)
+                    .lineLimit(1)
+                Spacer()
+                if let fileURL {
+                    ShareLink(item: fileURL) {
+                        Image(systemName: "square.and.arrow.up")
+                            .padding(AppSpacing.sm)
+                    }
+                    .accessibilityLabel("Compartir presentación")
+                }
+            }
+            .padding(.horizontal, AppSpacing.sm)
+            .foregroundStyle(AppColor.textPrimary(for: theme))
+            .background(AppColor.surface(for: theme))
+            Divider()
+            if let fileURL, errorMessage == nil {
+                QuickLookPreviewWrapper(fileURL: fileURL)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage {
+                errorView(message: errorMessage, theme: theme)
+            } else {
+                ProgressView("Cargando presentación…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .task { await resolveAndPrepareFile() }
+        .onChange(of: scenePhase) { _, phase in
+            sessionCoordinator?.handleScenePhaseChange(phase)
+        }
+        .onDisappear { sessionCoordinator?.endSession() }
+    }
+
+    @ViewBuilder
+    private var pdfReaderBody: some View {
+        let theme = themeManager.currentTheme
+
+        ZStack {
+            VStack(spacing: 0) {
+                // 1. Barra de herramientas superior personalizada (ocultable en pantalla completa)
+                if !isFullscreen {
+                    topBar(theme: theme)
                 }
 
-                // 4. Barra de Navegación y Progreso Inferior estilo Keynote
-                if !isFullscreen {
-                    Divider()
-                        .background(AppColor.border(for: theme))
-
-                    HStack {
-                        Button {
-                            goToPageText = "\(currentSlideIndex + 1)"
-                            showGoToPageDialog = true
-                        } label: {
-                            HStack(spacing: AppSpacing.xxs) {
-                                Text(String(localized: "Diapositiva \(currentSlideIndex + 1) de \(totalSlides)", comment: "Slide progress label"))
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColor.textSecondary(for: theme))
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(AppColor.textTertiary(for: theme))
+                // 2. Área Central de Lectura + QuickView (Miniaturas al lado derecho)
+                HStack(spacing: 0) {
+                    ZStack(alignment: .bottom) {
+                        AppColor.background(for: theme)
+                            .ignoresSafeArea()
+                            .onTapGesture {
+                                if !hasSelection && !showInlineBubble {
+                                    withAnimation(.easeInOut(duration: 0.25)) {
+                                        isFullscreen.toggle()
+                                    }
+                                }
                             }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Ir a número de diapositiva. Diapositiva actual \(currentSlideIndex + 1) de \(totalSlides)")
 
-                        Spacer()
-
-                        Button {
-                            goToPageText = "\(currentSlideIndex + 1)"
-                            showGoToPageDialog = true
-                        } label: {
-                            Text(String(format: "%.0f%%", progressPercent * 100))
-                                .font(AppTypography.captionBold)
-                                .foregroundStyle(AppColor.accent(for: theme))
-                                .contentShape(Rectangle())
+                        if let pdfDoc = pdfDocument {
+                            // Ruta A: PDFKit con Selección y Resaltado por Colores de Lectoría
+                            PDFPresentationPreviewWrapper(
+                                pdfDocument: pdfDoc,
+                                pageIndex: $currentSlideIndex,
+                                annotations: presentationAnnotations,
+                                onTextSelected: { text, bounds, slideIdx in
+                                    activeSelectedText = text
+                                    selectedText = text
+                                    hasSelection = true
+                                },
+                                onSelectionCleared: {
+                                    hasSelection = false
+                                    selectedText = ""
+                                },
+                                onAddNoteRequest: { text, slideIdx in
+                                    activeSelectedText = text
+                                    selectedText = text
+                                    noteBody = ""
+                                    noteTags = ""
+                                    showNoteEditor = true
+                                },
+                                onTranslateRequest: { text in
+                                    selectedText = text
+                                    triggerAIAction("translate_en")
+                                }
+                            )
+                        } else if let fileURL, errorMessage == nil {
+                            // Ruta B: Quick Look nativo del original (.ppt / .pptx)
+                            QuickLookPreviewWrapper(fileURL: fileURL)
+                        } else if isLoading {
+                            VStack(spacing: AppSpacing.md) {
+                                ProgressView()
+                                    .scaleEffect(1.2)
+                                    .tint(AppColor.accent(for: theme))
+                                Text(String(localized: "Cargando presentación…", comment: "Reader: loading presentation"))
+                                    .font(AppTypography.body)
+                                    .foregroundStyle(AppColor.textSecondary(for: theme))
+                            }
+                        } else if let errorMessage {
+                            errorView(message: errorMessage, theme: theme)
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Ir a número de diapositiva por porcentaje. Progreso actual \(Int(progressPercent * 100))%")
+
+                        // Botón flotante para salir de pantalla completa
+                        if isFullscreen {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isFullscreen = false
+                                }
+                            } label: {
+                                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(AppSpacing.xs)
+                                    .background(AppColor.surface(for: theme).opacity(0.85))
+                                    .foregroundStyle(AppColor.textPrimary(for: theme))
+                                    .clipShape(Circle())
+                                    .shadow(radius: 4)
+                            }
+                            .padding(.bottom, AppSpacing.md)
+                        }
+
+                        // Botón flotante para volver a la diapositiva previa tras un salto
+                        if let originIndex = lastJumpOriginIndex, originIndex != currentSlideIndex, !isFullscreen {
+                            Button {
+                                lastJumpOriginIndex = nil
+                                currentSlideIndex = originIndex
+                            } label: {
+                                HStack(spacing: AppSpacing.xs) {
+                                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                                        .font(.subheadline)
+                                    Text(String(localized: "Volver a pág. \(originIndex + 1)", comment: "Reader: jump back button"))
+                                        .font(AppTypography.captionBold)
+                                }
+                                .padding(.horizontal, AppSpacing.md)
+                                .padding(.vertical, AppSpacing.xs)
+                                .background(AppColor.accent(for: theme))
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                                .shadow(color: AppShadow.medium(for: theme).color,
+                                        radius: AppShadow.medium(for: theme).radius,
+                                        x: AppShadow.medium(for: theme).x,
+                                        y: AppShadow.medium(for: theme).y)
+                            }
+                            .padding(.bottom, AppSpacing.sm)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
                     }
-                    .padding(.horizontal, AppSpacing.lg)
-                    .padding(.top, AppSpacing.xs)
 
-                    ProgressView(value: progressPercent, total: 1.0)
-                        .tint(AppColor.accent(for: theme))
-                        .padding(.horizontal, AppSpacing.lg)
-                        .padding(.bottom, AppSpacing.xs)
+                    // QuickView: Tira de miniaturas lateral fija para iPad
+                    if horizontalSizeClass == .regular && showThumbnails && !isFullscreen {
+                        Divider()
+                            .background(AppColor.border(for: theme))
+
+                        PresentationThumbnailStripView(
+                            pdfDocument: pdfDocument,
+                            fileURL: fileURL,
+                            totalSlides: totalSlides,
+                            currentSlideIndex: $currentSlideIndex,
+                            isVertical: true,
+                            slidesWithNotesOrAnnotations: annotatedSlideIndices,
+                            canNavigate: isIndexableNavigationSupported,
+                            onSelectSlide: { index in
+                                guard isIndexableNavigationSupported else { return }
+                                if index != currentSlideIndex {
+                                    lastJumpOriginIndex = currentSlideIndex
+                                    currentSlideIndex = index
+                                }
+                            }
+                        )
+                        .transition(.move(edge: .trailing))
+                    }
                 }
             }
             .background(
@@ -282,6 +694,16 @@ struct PresentationReaderView: View {
                             x: AppShadow.subtle(for: theme).x,
                             y: AppShadow.subtle(for: theme).y)
             )
+
+            // QuickView iPhone: Tirador / Tirilla de apertura en el borde derecho cuando el panel está oculto
+            if horizontalSizeClass == .compact && !showThumbnails && !isFullscreen {
+                iphoneDrawerHandle(theme: theme)
+            }
+
+            // QuickView iPhone: Panel superpuesto deslizable (Drawer) al tocar tirador o deslizar desde borde
+            if horizontalSizeClass == .compact && showThumbnails && !isFullscreen {
+                iphoneDrawer(theme: theme)
+            }
 
             // Panel flotante de selección (Menú con 5 Colores, Diccionario, Traducción e IA)
             if hasSelection && !selectedText.isEmpty {
@@ -298,10 +720,11 @@ struct PresentationReaderView: View {
         .toolbar(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .alert(String(localized: "Ir a página", comment: "Presentation jump alert title"), isPresented: $showGoToPageDialog) {
-            TextField(String(localized: "Número de diapositiva (1-\(totalSlides))", comment: "Slide textfield placeholder"), text: $goToPageText)
+            TextField(String(localized: "Número de diapositiva (1-\(max(1, totalSlides)))", comment: "Slide textfield placeholder"), text: $goToPageText)
                 .keyboardType(.numberPad)
             Button(String(localized: "Ir", comment: "Go to slide confirm")) {
-                if let page = Int(goToPageText), page >= 1 && page <= totalSlides {
+                let trimmed = goToPageText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let page = Int(trimmed), page >= 1 && page <= totalSlides {
                     let targetIndex = page - 1
                     if targetIndex != currentSlideIndex {
                         lastJumpOriginIndex = currentSlideIndex
@@ -316,11 +739,23 @@ struct PresentationReaderView: View {
         .task {
             await resolveAndPrepareFile()
         }
+        .onChange(of: totalSlides) { _, newTotal in
+            if newTotal <= 0 {
+                currentSlideIndex = 0
+            } else if currentSlideIndex >= newTotal {
+                currentSlideIndex = newTotal - 1
+            }
+        }
         .onChange(of: scenePhase) { _, newPhase in
             sessionCoordinator?.handleScenePhaseChange(newPhase)
         }
         .onDisappear {
             sessionCoordinator?.endSession()
+        }
+        .sheet(isPresented: $notesSession.isSheetPresented, onDismiss: {
+            notesSession.close()
+        }) {
+            notesSheetView(theme: theme)
         }
         .sheet(isPresented: $showNoteEditor) {
             noteEditorSheet(theme: theme)
@@ -813,8 +1248,15 @@ struct PresentationReaderView: View {
             if validURL.pathExtension.lowercased() == "pdf", let pdf = PDFDocument(url: validURL) {
                 self.pdfDocument = pdf
                 self.totalSlides = pdf.pageCount
-            } else if let parsedSlides = try? await PPTXParser.parse(url: validURL), !parsedSlides.isEmpty {
-                self.totalSlides = parsedSlides.count
+            } else {
+                self.pdfDocument = nil
+                self.totalSlides = 0
+            }
+
+            if self.totalSlides <= 0 {
+                self.currentSlideIndex = 0
+            } else if self.currentSlideIndex >= self.totalSlides {
+                self.currentSlideIndex = self.totalSlides - 1
             }
             self.isLoading = false
 
@@ -883,5 +1325,95 @@ struct PresentationReaderView: View {
             }
         }
         .padding(AppSpacing.xl)
+    }
+}
+
+// MARK: - PresentationNotesCoordinator & PresentationNotesSession
+
+/// Coordinador y resolutor centralizado de destinos para notas en presentaciones (QuickLook y PDF).
+public enum PresentationNotesCoordinator {
+    public static let generalNoteOption: Int = -1
+    public static let generalAnchor: String = "presentation_general"
+
+    /// Determina la opción inicial al abrir el panel en QuickLook: siempre -1 ("Nota general de la presentación").
+    public static func initialQuickLookOption() -> Int {
+        generalNoteOption
+    }
+
+    /// Resuelve el anchor de la nota para QuickLook según la opción seleccionada y el número de diapositivas.
+    public static func quickLookAnchor(forOption option: Int, totalSlides: Int) -> String {
+        if option < 0 || option >= totalSlides {
+            return generalAnchor
+        } else {
+            return "slide_\(option + 1)"
+        }
+    }
+
+    /// Resuelve el título descriptivo para la nota de QuickLook.
+    public static func quickLookTitle(forOption option: Int, totalSlides: Int) -> String {
+        if option < 0 || option >= totalSlides {
+            return String(localized: "Nota general de la presentación", comment: "General presentation note title")
+        } else {
+            return String(localized: "Notas de la diapositiva \(option + 1)", comment: "Slide notes title")
+        }
+    }
+
+    /// Resuelve el anchor de diapositiva para visor indexable (PDFKit) usando el índice capturado de forma estable.
+    public static func pdfSlideAnchor(forTargetSlideIndex targetIndex: Int) -> String {
+        "slide_\(max(0, targetIndex) + 1)"
+    }
+}
+
+/// Modela el ciclo de vida y las transiciones de estado del panel de notas de presentación.
+public struct PresentationNotesSession: Equatable, Sendable {
+    public var isSheetPresented: Bool
+    public var pdfTargetSlideIndex: Int
+    public var quickLookNoteOption: Int
+
+    public init(
+        isSheetPresented: Bool = false,
+        pdfTargetSlideIndex: Int = 0,
+        quickLookNoteOption: Int = PresentationNotesCoordinator.generalNoteOption
+    ) {
+        self.isSheetPresented = isSheetPresented
+        self.pdfTargetSlideIndex = pdfTargetSlideIndex
+        self.quickLookNoteOption = quickLookNoteOption
+    }
+
+    /// Apertura del panel: en QuickLook SIEMPRE inicia en general (-1) sin importar totalSlides.
+    /// En PDFKit captura y fija de forma inmutable el slide actual para evitar desvíos en background.
+    public mutating func open(isIndexableNavigationSupported: Bool, currentSlideIndex: Int) {
+        if isIndexableNavigationSupported {
+            pdfTargetSlideIndex = max(0, currentSlideIndex)
+        } else {
+            quickLookNoteOption = -1
+        }
+        isSheetPresented = true
+    }
+
+    /// Cierre del panel: restablece el destino a la nota general (-1).
+    public mutating func close() {
+        isSheetPresented = false
+        quickLookNoteOption = -1
+    }
+
+    /// Selección explícita del usuario.
+    public mutating func selectOption(_ option: Int) {
+        quickLookNoteOption = option
+    }
+
+    /// Anchor efectivo para QuickLook.
+    public func quickLookAnchor(totalSlides: Int) -> String {
+        PresentationNotesCoordinator.quickLookAnchor(forOption: quickLookNoteOption, totalSlides: totalSlides)
+    }
+
+    /// Título efectivo para QuickLook.
+    public func quickLookTitle(totalSlides: Int) -> String {
+        PresentationNotesCoordinator.quickLookTitle(forOption: quickLookNoteOption, totalSlides: totalSlides)
+    }
+
+    /// Anchor efectivo para PDFKit basado en el target capturado.
+    public func pdfAnchor() -> String {
+        PresentationNotesCoordinator.pdfSlideAnchor(forTargetSlideIndex: pdfTargetSlideIndex)
     }
 }

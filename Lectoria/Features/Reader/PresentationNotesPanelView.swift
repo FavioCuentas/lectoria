@@ -40,17 +40,40 @@ struct PresentationNotesPanelView: View {
     let slideIndex: Int
     let totalSlides: Int
     let existingNotes: [Note]
+    var customAnchor: String? = nil
+    var customTitle: String? = nil
+    var initiallyExpanded: Bool = false
     let onSaveNote: (String, StudyCategory) -> Void
 
     @Environment(ThemeManager.self) private var themeManager
 
     @State private var newNoteText = ""
     @State private var selectedCategory: StudyCategory = .importante
-    @State private var isExpanded = false
+    @State private var isExpanded: Bool
+
+    init(
+        slideIndex: Int,
+        totalSlides: Int,
+        existingNotes: [Note],
+        customAnchor: String? = nil,
+        customTitle: String? = nil,
+        initiallyExpanded: Bool = false,
+        onSaveNote: @escaping (String, StudyCategory) -> Void
+    ) {
+        self.slideIndex = slideIndex
+        self.totalSlides = totalSlides
+        self.existingNotes = existingNotes
+        self.customAnchor = customAnchor
+        self.customTitle = customTitle
+        self.initiallyExpanded = initiallyExpanded
+        self.onSaveNote = onSaveNote
+        self._isExpanded = State(initialValue: initiallyExpanded)
+    }
 
     var body: some View {
         let theme = themeManager.currentTheme
-        let slideNotes = existingNotes.filter { $0.anchor == "slide_\(slideIndex + 1)" }
+        let effectiveAnchor = customAnchor ?? "slide_\(slideIndex + 1)"
+        let slideNotes = existingNotes.filter { $0.anchor == effectiveAnchor }
 
         VStack(spacing: AppSpacing.xs) {
             // Header del Panel
@@ -65,7 +88,7 @@ struct PresentationNotesPanelView: View {
                             .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(AppColor.accent(for: theme))
 
-                        Text(String(localized: "Notas del slide \(slideIndex + 1)", comment: "Slide notes header"))
+                        Text(customTitle ?? String(localized: "Notas del slide \(slideIndex + 1)", comment: "Slide notes header"))
                             .font(AppTypography.captionBold)
                             .foregroundStyle(AppColor.textPrimary(for: theme))
 
