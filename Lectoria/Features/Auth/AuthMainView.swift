@@ -195,21 +195,24 @@ struct AuthMainView: View {
             }
 
             // Apple Sign-In Nativo con Nonce seguro
-            SignInWithAppleButton(
-                .continue,
-                onRequest: { request in
-                    let nonce = randomNonceString()
-                    currentNonce = nonce
-                    request.requestedScopes = [.email, .fullName]
-                    request.nonce = sha256(nonce)
-                },
-                onCompletion: { result in
-                    handleAppleSignIn(result: result)
-                }
-            )
-            .signInWithAppleButtonStyle(theme == .dark ? .white : .black)
-            .frame(height: 50)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+            // (oculto hasta contar con la membresía del Developer Program; ver AppEnvironment.isAppleSignInEnabled)
+            if AppEnvironment.current().isAppleSignInEnabled {
+                SignInWithAppleButton(
+                    .continue,
+                    onRequest: { request in
+                        let nonce = randomNonceString()
+                        currentNonce = nonce
+                        request.requestedScopes = [.email, .fullName]
+                        request.nonce = sha256(nonce)
+                    },
+                    onCompletion: { result in
+                        handleAppleSignIn(result: result)
+                    }
+                )
+                .signInWithAppleButtonStyle(theme == .dark ? .white : .black)
+                .frame(height: 50)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+            }
 
             // Correo Electrónico OTP
             Button {

@@ -46,6 +46,12 @@ struct AppEnvironment: Sendable {
 
     // MARK: - Feature flags (valores por defecto, actualizables remotamente)
 
+    /// Sign in with Apple requiere la membresía de pago del Apple Developer Program:
+    /// los equipos personales no soportan esa capability y el perfil de aprovisionamiento
+    /// falla. Reactivar tras inscribirse y re-añadir el entitlement
+    /// `com.apple.developer.applesignin` en `Lectoria.entitlements`.
+    let isAppleSignInEnabled: Bool = false
+
     /// Número máximo de documentos para el plan gratuito.
     let freeDocumentLimit: Int = 5
 
