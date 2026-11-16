@@ -425,7 +425,8 @@ struct AnalyticsTests {
             }
         }
 
-        let fastPolicy = AnalyticsBackoffPolicy(baseDelay: 0.04, minimumFlushInterval: 0.01)
+        // Ventana amplia (500ms) para que el despertar prematuro (10%) no agote el backoff bajo carga de la suite
+        let fastPolicy = AnalyticsBackoffPolicy(baseDelay: 0.5, minimumFlushInterval: 0.01)
         let sleepProvider = PrematureWakeSleepProvider()
         let coordinator = AnalyticsFlushCoordinator(policy: fastPolicy, sleepProvider: sleepProvider)
 
@@ -451,8 +452,9 @@ struct AnalyticsTests {
     @Test
     @MainActor
     func testCancellingPreviousRetryDoesNotCancelNewRetry() async throws {
+        // Backoff de 500ms: margen suficiente para programar el reintento 2 antes de que dispare el 1 bajo carga
         let coordinator = AnalyticsFlushCoordinator(
-            policy: AnalyticsBackoffPolicy(baseDelay: 0.05, minimumFlushInterval: 0.01)
+            policy: AnalyticsBackoffPolicy(baseDelay: 0.5, minimumFlushInterval: 0.01)
         )
         let t0 = Date()
         _ = await coordinator.shouldProceedWithFlush(now: t0)
