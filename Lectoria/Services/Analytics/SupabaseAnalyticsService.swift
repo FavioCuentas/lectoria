@@ -121,6 +121,7 @@ public final class SupabaseAnalyticsService: AnalyticsService, @unchecked Sendab
             return true
         }
 
+        let timestampFormatter = ISO8601DateFormatter()
         let payload: [[String: Any]] = models.compactMap { m in
             guard let record = m.toDomain() else { return nil }
             var dict: [String: Any] = [
@@ -132,7 +133,7 @@ public final class SupabaseAnalyticsService: AnalyticsService, @unchecked Sendab
                 "app_version": record.appVersion,
                 "os_version": record.osVersion,
                 "device_family": record.deviceFamily,
-                "client_timestamp": ISO8601DateFormatter().string(from: record.clientTimestamp)
+                "client_timestamp": timestampFormatter.string(from: record.clientTimestamp)
             ]
             if let uid = record.userID {
                 dict["user_id"] = uid

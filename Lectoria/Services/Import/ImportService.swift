@@ -98,11 +98,16 @@ public final class ImportService: Sendable {
         let uniqueID = UUID().uuidString
         let tempFileURL = tempDirectory.appendingPathComponent("\(uniqueID).\(ext)")
 
+        // La copia y el hash son proporcionales al tamaño del archivo: ejecutarlos fuera
+        // del MainActor para no congelar la UI con documentos grandes. El security scope
+        // abierto arriba sigue vigente (es por proceso, no por hilo) hasta el defer final.
         do {
-            if FileManager.default.fileExists(atPath: tempFileURL.path) {
-                try? FileManager.default.removeItem(at: tempFileURL)
-            }
-            try FileManager.default.copyItem(at: url, to: tempFileURL)
+            try await Task.detached(priority: .userInitiated) {
+                if FileManager.default.fileExists(atPath: tempFileURL.path) {
+                    try? FileManager.default.removeItem(at: tempFileURL)
+                }
+                try FileManager.default.copyItem(at: url, to: tempFileURL)
+            }.value
         } catch {
             throw ImportError.fileAccessFailed(error.localizedDescription)
         }
@@ -113,7 +118,9 @@ public final class ImportService: Sendable {
         }
 
         // 3. Calcular hash SHA-256
-        let sha256 = try fileStorageService.calculateSHA256(for: tempFileURL)
+        let sha256 = try await Task.detached(priority: .userInitiated) { [fileStorageService] in
+            try fileStorageService.calculateSHA256(for: tempFileURL)
+        }.value
 
         // 4. Buscar duplicados en la base de datos local
         let allPublications = try await publicationRepository.fetchAll()
@@ -121,8 +128,12 @@ public final class ImportService: Sendable {
             throw ImportError.duplicateDocument(title: duplicate.title)
         }
 
-        // 5. Extraer metadatos básicos (Título y Autor)
-        let metadata = metadataExtractor.extract(from: tempFileURL, type: publicationType, originalFileName: url.lastPathComponent)
+        // 5. Extraer metadatos básicos (Título y Autor) fuera del MainActor:
+        // implica abrir y parsear el documento (EPUB/PDF), trabajo pesado para archivos grandes.
+        let originalFileName = url.lastPathComponent
+        let metadata = await Task.detached(priority: .userInitiated) { [metadataExtractor] in
+            metadataExtractor.extract(from: tempFileURL, type: publicationType, originalFileName: originalFileName)
+        }.value
 
         // 6. Obtener tamaño físico y generar un nombre local único para el archivo
         let fileSize = try fileStorageService.getFileSize(at: tempFileURL)
@@ -193,8 +204,11 @@ public final class ImportService: Sendable {
         let uniqueID = UUID().uuidString
         let tempFileURL = tempDirectory.appendingPathComponent("\(uniqueID).txt")
 
+        // Escritura y hash fuera del MainActor: el texto pegado puede ser muy extenso.
         do {
-            try text.write(to: tempFileURL, atomically: true, encoding: .utf8)
+            try await Task.detached(priority: .userInitiated) {
+                try text.write(to: tempFileURL, atomically: true, encoding: .utf8)
+            }.value
         } catch {
             throw ImportError.fileAccessFailed(error.localizedDescription)
         }
@@ -203,7 +217,9 @@ public final class ImportService: Sendable {
             try? FileManager.default.removeItem(at: tempFileURL)
         }
 
-        let sha256 = try fileStorageService.calculateSHA256(for: tempFileURL)
+        let sha256 = try await Task.detached(priority: .userInitiated) { [fileStorageService] in
+            try fileStorageService.calculateSHA256(for: tempFileURL)
+        }.value
 
         // Validar duplicado
         let allPublications = try await publicationRepository.fetchAll()
