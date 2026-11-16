@@ -1,6 +1,9 @@
 import UIKit
 import PDFKit
 import QuickLookThumbnailing
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Import")
 
 // MARK: - CoverGeneratorError
 
@@ -277,7 +280,7 @@ public final class CoverGenerator: @unchecked Sendable {
                 return
             }
         } catch {
-            print("[CoverGenerator] QLThumbnailGenerator no pudo generar miniatura para \(sourceURL.lastPathComponent): \(error.localizedDescription). Usando portada sintética.")
+            logger.error("[CoverGenerator] QLThumbnailGenerator no pudo generar miniatura para \(sourceURL.lastPathComponent): \(error.localizedDescription). Usando portada sintética.")
         }
 
         // Fallback a portada sintética

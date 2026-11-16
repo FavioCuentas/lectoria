@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 import Observation
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Auth")
 
 // MARK: - InstitutionalAuthViewModel
 
@@ -156,10 +159,10 @@ public final class InstitutionalAuthViewModel {
 
             if route == .code, let ticket = validation_ticket {
                 try await institutionService.claimMembershipByTicket(ticket: ticket)
-                print("✅ [DIAG-OTP] Membresía reclamada por ticket | membership_claimed: true")
+                logger.info("✅ [DIAG-OTP] Membresía reclamada por ticket | membership_claimed: true")
             } else {
                 try await institutionService.claimMembershipByDomain(email: trimmedEmail)
-                print("✅ [DIAG-OTP] Membresía reclamada por dominio | membership_claimed: true")
+                logger.info("✅ [DIAG-OTP] Membresía reclamada por dominio | membership_claimed: true")
             }
 
             if let user = authService.currentUser {
@@ -168,13 +171,13 @@ public final class InstitutionalAuthViewModel {
 
             state = .authenticated
             stopResendTimer()
-            print("🏛 [DIAG-OTP] Navegando a Biblioteca | navigation: success")
+            logger.info("🏛 [DIAG-OTP] Navegando a Biblioteca | navigation: success")
             onSuccess()
         } catch let error as InstitutionalAuthError {
-            print("❌ [DIAG-OTP] InstitutionalAuthError: \(error.errorDescription ?? error.localizedDescription) | membership_claimed: false | navigation: false")
+            logger.error("❌ [DIAG-OTP] InstitutionalAuthError: \(error.errorDescription ?? error.localizedDescription) | membership_claimed: false | navigation: false")
             handleError(error)
         } catch {
-            print("❌ [DIAG-OTP] Error genérico: \(error.localizedDescription) | membership_claimed: false | navigation: false")
+            logger.error("❌ [DIAG-OTP] Error genérico: \(error.localizedDescription) | membership_claimed: false | navigation: false")
             let errorMsg = error.localizedDescription.lowercased()
             if errorMsg.contains("expired") || errorMsg.contains("vencido") {
                 handleError(.otpExpired)

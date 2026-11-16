@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Notes")
 
 // MARK: - EditAnnotationSheet
 
@@ -244,7 +247,7 @@ struct EditAnnotationSheet: View {
             let url = try NoteExporter.export(data: exportData, format: format)
             self.exportWrapper = ExportFileWrapper(url: url)
         } catch {
-            print("Error al exportar nota: \(error)")
+            logger.error("Error al exportar nota: \(error)")
         }
     }
     

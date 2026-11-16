@@ -133,7 +133,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         • Message: \(message)
         """)
 
-        print("❌ [SupabaseAuth Diagnostic] Status: \(statusCode) | RequestID: \(requestId) | ErrorCode: \(errorCode) | Msg: \(message)")
+        logger.error("❌ [SupabaseAuth Diagnostic] Status: \(statusCode) | RequestID: \(requestId) | ErrorCode: \(errorCode) | Msg: \(message)")
 
         return NSError(domain: "SupabaseAuth", code: statusCode, userInfo: [
             NSLocalizedDescriptionKey: message,
@@ -341,19 +341,19 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
             "token": cleanCode
         ]
 
-        print("🔍 [DIAG-OTP] Sending verify request | type: \(otpType) | endpoint: /auth/v1/verify")
+        logger.info("🔍 [DIAG-OTP] Sending verify request | type: \(otpType) | endpoint: /auth/v1/verify")
         logger.info("🔍 [DIAG-OTP] Sending verify request | type: \(otpType)")
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            print("❌ [DIAG-OTP] No HTTP response received")
+            logger.error("❌ [DIAG-OTP] No HTTP response received")
             throw URLError(.badServerResponse)
         }
 
         let statusCode = httpResponse.statusCode
-        print("📡 [DIAG-OTP] HTTP status: \(statusCode)")
+        logger.info("📡 [DIAG-OTP] HTTP status: \(statusCode)")
         logger.info("📡 [DIAG-OTP] HTTP status: \(statusCode)")
 
         guard (200...299).contains(statusCode) else {
@@ -362,7 +362,7 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
             if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 errorCode = json["error_code"] as? String ?? json["code"] as? String ?? "none"
             }
-            print("❌ [DIAG-OTP] Verification failed | status: \(statusCode) | error_code: \(errorCode)")
+            logger.error("❌ [DIAG-OTP] Verification failed | status: \(statusCode) | error_code: \(errorCode)")
             logger.error("❌ [DIAG-OTP] Verification failed | status: \(statusCode) | error_code: \(errorCode)")
             throw parseSupabaseError(from: data, response: httpResponse)
         }
@@ -370,13 +370,13 @@ public final class SupabaseAuthService: AuthService, @unchecked Sendable {
         do {
             let session = try makeDecoder().decode(SupabaseSessionResponse.self, from: data)
             let sessionCreated = !session.accessToken.isEmpty
-            print("✅ [DIAG-OTP] Verification succeeded | status: \(statusCode) | session_created: \(sessionCreated)")
+            logger.info("✅ [DIAG-OTP] Verification succeeded | status: \(statusCode) | session_created: \(sessionCreated)")
             logger.info("✅ [DIAG-OTP] Verification succeeded | status: \(statusCode) | session_created: \(sessionCreated)")
             await handleSessionResponse(session, defaultEmail: cleanEmail)
         } catch let decodeError {
             // Log seguro: no registra tokens, solo el tipo de error de decodificación
             let errorDesc = decodeError.localizedDescription
-            print("❌ [DIAG-OTP] JSON decode failed after \(statusCode) | error: \(errorDesc)")
+            logger.error("❌ [DIAG-OTP] JSON decode failed after \(statusCode) | error: \(errorDesc)")
             logger.error("❌ [DIAG-OTP] JSON decode failed | status: \(statusCode) | decode_error: \(errorDesc)")
             throw decodeError
         }

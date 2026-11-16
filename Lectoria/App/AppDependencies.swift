@@ -1,5 +1,8 @@
 import Foundation
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "App")
 
 // MARK: - AppDependencies
 
@@ -152,7 +155,7 @@ public final class AppDependencies {
             _ = try await importService.importPublication(from: tempURL)
             try? FileManager.default.removeItem(at: tempURL)
         } catch {
-            print("Error al importar la presentación demo: \(error.localizedDescription)")
+            logger.error("Error al importar la presentación demo: \(error.localizedDescription)")
         }
 
         await ensureCoversExistIfNeeded()

@@ -1,6 +1,9 @@
 import Foundation
 import StoreKit
 import Observation
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Subscription")
 
 // MARK: - StoreKitSubscriptionService
 
@@ -57,7 +60,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
                 }
             }
         } catch {
-            print("[StoreKitSubscriptionService] Error al verificar active entitlements: \(error.localizedDescription)")
+            logger.error("[StoreKitSubscriptionService] Error al verificar active entitlements: \(error.localizedDescription)")
         }
     }
 
@@ -71,7 +74,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
                     await refreshCurrentEntitlements()
                     await transaction.finish()
                 } catch {
-                    print("[StoreKitSubscriptionService] Error al observar transacciones: \(error.localizedDescription)")
+                    logger.error("[StoreKitSubscriptionService] Error al observar transacciones: \(error.localizedDescription)")
                 }
             }
         }
@@ -164,7 +167,7 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
                     }
                 }
             } catch {
-                print("[StoreKitSubscriptionService] Error al procesar entitlement de transacción: \(error.localizedDescription)")
+                logger.error("[StoreKitSubscriptionService] Error al procesar entitlement de transacción: \(error.localizedDescription)")
             }
         }
 

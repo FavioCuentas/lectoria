@@ -1,6 +1,9 @@
 import SwiftUI
 @preconcurrency import ReadiumShared
 @preconcurrency import ReadiumNavigator
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Reader")
 
 // MARK: - EPUBNavigatorWrapper
 
@@ -45,7 +48,7 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
             context.coordinator.navigator = navigator
             return navigator
         } catch {
-            print("[EPUBNavigatorWrapper] Error al instanciar Navigator con posición inicial: \(error). Reintentando sin posición.")
+            logger.error("[EPUBNavigatorWrapper] Error al instanciar Navigator con posición inicial: \(error). Reintentando sin posición.")
             if let navigator = try? EPUBNavigatorViewController(
                 publication: publication,
                 initialLocation: nil,
@@ -156,7 +159,7 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
 
         func navigator(_ navigator: Navigator, presentError error: NavigatorError) {
             // Manejo de errores de navegación
-            print("[EPUBNavigatorWrapper] Error del navegador: \(error)")
+            logger.error("[EPUBNavigatorWrapper] Error del navegador: \(error)")
         }
         
         func navigator(_ navigator: SelectableNavigator, shouldShowMenuForSelection selection: Selection) -> Bool {

@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "App")
 
 // MARK: - LectoriaApp
 
@@ -88,7 +91,7 @@ struct LectoriaApp: App {
                     }
                 }
             } catch {
-                print("Error al importar desde URL externa: \(error.localizedDescription)")
+                logger.error("Error al importar desde URL externa: \(error.localizedDescription)")
             }
         }
     }

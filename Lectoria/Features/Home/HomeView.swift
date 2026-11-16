@@ -1,4 +1,7 @@
 import SwiftUI
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Home")
 
 // MARK: - HomeView
 
@@ -133,7 +136,7 @@ struct HomeView: View {
                 self.isLoadingData = false
             }
         } catch {
-            print("Error cargando datos de inicio: \(error.localizedDescription)")
+            logger.error("Error cargando datos de inicio: \(error.localizedDescription)")
             await MainActor.run {
                 self.isLoadingData = false
             }

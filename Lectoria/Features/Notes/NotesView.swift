@@ -1,5 +1,8 @@
 import SwiftUI
 import ReadiumShared
+import os
+
+private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Notes")
 
 // MARK: - NotesView
 
@@ -469,7 +472,7 @@ struct NotesView: View {
             let url = try NoteExporter.export(data: exportDataList, format: format)
             self.exportWrapper = ExportFileWrapper(url: url)
         } catch {
-            print("Error al exportar notas: \(error)")
+            logger.error("Error al exportar notas: \(error)")
         }
     }
 
