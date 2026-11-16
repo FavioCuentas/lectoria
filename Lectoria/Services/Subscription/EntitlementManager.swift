@@ -96,7 +96,7 @@ public final class EntitlementManager: EntitlementService, @unchecked Sendable {
             if let limit = entitlements.monthlyAILimit {
                 let used = await fetchMonthlyAIUsageCount()
                 if used >= limit {
-                    return .limitReached(message: String(localized: "Has alcanzado tu límite mensual de 10 consultas de IA local en el plan Free.", comment: "AI limit message"))
+                    return .limitReached(message: String(localized: "Has alcanzado tu límite mensual de \(limit) consultas de IA local en el plan Free.", comment: "AI limit message"))
                 }
             }
             return .allowed
@@ -145,13 +145,13 @@ public final class EntitlementManager: EntitlementService, @unchecked Sendable {
         return PlanLimits(
             activePlan: plan,
             documentsUsed: docsCount,
-            documentsLimit: entitlements.maxActiveDocuments ?? 5,
+            documentsLimit: entitlements.maxActiveDocuments ?? Int.max,
             highlightsUsed: hlCount,
             highlightsLimit: Int.max,
             notesUsed: notesCount,
             notesLimit: Int.max,
             aiActionsUsed: aiCount,
-            aiActionsLimit: entitlements.monthlyAILimit ?? 10
+            aiActionsLimit: entitlements.monthlyAILimit ?? Int.max
         )
     }
 
@@ -178,12 +178,10 @@ public final class EntitlementManager: EntitlementService, @unchecked Sendable {
         // 1. Comprobar compras en StoreKit 2
         if subscriptionService.hasActiveSubscription {
             if let activeEnt = subscriptionService.activeEntitlement {
-                if activeEnt.productID == "com.lectoria.premium.lifetime" {
+                if activeEnt.productID == StoreKitSubscriptionService.lifetimeProductID {
                     sources.append(.lifetime)
-                } else if activeEnt.productID == "com.lectoria.premium.founder" {
+                } else if activeEnt.productID == StoreKitSubscriptionService.founderProductID {
                     sources.append(.appleSubscription(tier: .premiumFounder))
-                } else if activeEnt.productID == "com.lectoria.premium.yearly" || activeEnt.productID == "com.lectoria.premium.monthly" {
-                    sources.append(.appleSubscription(tier: .premiumRegular))
                 } else {
                     sources.append(.appleSubscription(tier: .premiumRegular))
                 }

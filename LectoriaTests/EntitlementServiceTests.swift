@@ -28,7 +28,7 @@ struct EntitlementServiceTests {
         #expect(freeEnt.maxActiveDocuments == 5)
         #expect(freeEnt.allowedFormats == [.epub, .txt, .pastedText])
         #expect(freeEnt.canUseLocalTranslation == false)
-        #expect(freeEnt.monthlyAILimit == 10)
+        #expect(freeEnt.monthlyAILimit == 3)
         #expect(freeEnt.maximumDevices == 1)
 
         let founderEnt = Entitlements.defaultForTier(.premiumFounder)

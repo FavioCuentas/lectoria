@@ -41,8 +41,8 @@ struct LocalAITests {
         #expect(AIDisclaimer.text.contains("Las funciones de inteligencia artificial pueden generar errores"))
     }
 
-    @Test("10 monthly AI quota limit for Free plan")
-    func testTenMonthlyAIQuotaLimitFreePlan() async throws {
+    @Test("3 monthly AI quota limit for Free plan")
+    func testThreeMonthlyAIQuotaLimitFreePlan() async throws {
         let entitlementService = dependencies.entitlementService
         let aiRepo = dependencies.aiUsageRepository
         mockSub.hasActiveSubscription = false
@@ -51,8 +51,8 @@ struct LocalAITests {
         let initialAccess = await entitlementService.canAccess(.useLocalAI)
         #expect(initialAccess == .allowed)
 
-        // Save 10 local AI usage records in the current month
-        for i in 1...10 {
+        // Save 3 local AI usage records in the current month (Free quota)
+        for _ in 1...3 {
             let usage = AIUsage(
                 id: UUID(),
                 operation: "explain",
@@ -62,9 +62,9 @@ struct LocalAITests {
             try await aiRepo.save(usage)
         }
 
-        // 11th operation should be blocked on Free with 10-quota limit message
-        let eleventhAccess = await entitlementService.canAccess(.useLocalAI)
-        #expect(eleventhAccess == .limitReached(message: "Has alcanzado tu límite mensual de 10 consultas de IA local en el plan Free."))
+        // 4th operation should be blocked on Free with 3-quota limit message
+        let fourthAccess = await entitlementService.canAccess(.useLocalAI)
+        #expect(fourthAccess == .limitReached(message: "Has alcanzado tu límite mensual de 3 consultas de IA local en el plan Free."))
     }
 
     @Test("Local Translation requires Premium on Free plan")

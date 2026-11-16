@@ -58,12 +58,13 @@ public struct Entitlements: Equatable, Sendable {
             return Entitlements(
                 tier: .free,
                 maxActiveDocuments: 5,
-                allowedFormats: Set(PublicationType.allCases),
+                // Plan Free: solo EPUB, TXT y texto pegado; PDF, PPTX y Markdown requieren Premium.
+                allowedFormats: [.epub, .txt, .pastedText],
                 canUseAdvancedAnnotations: true,
                 canUseAdvancedExport: false,
                 canUseAdvancedStatistics: false,
                 canUseLocalAI: true,
-                monthlyAILimit: 10,
+                monthlyAILimit: 3,
                 canUseLocalTranslation: false,
                 maximumDevices: 1,
                 canUseInstitutionalLibrary: false,

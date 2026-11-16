@@ -227,9 +227,19 @@ struct PaywallView: View {
         .padding(.top, AppSpacing.xs)
     }
 
+    /// Producto anual a la venta: precio Fundador mientras esté publicado; si no, el anual regular.
+    private var annualStoreProduct: StoreKit.Product? {
+        products.first(where: { $0.id == StoreKitSubscriptionService.founderProductID })
+            ?? products.first(where: { $0.id == StoreKitSubscriptionService.yearlyProductID })
+    }
+
+    private var lifetimeStoreProduct: StoreKit.Product? {
+        products.first(where: { $0.id == StoreKitSubscriptionService.lifetimeProductID })
+    }
+
     private func yearlyPlanCard(theme: AppTheme) -> some View {
         let isSelected = selectedPlan == .yearly
-        let yearlyProduct = products.first(where: { $0.id.contains("yearly") || $0.id.contains("founder") })
+        let yearlyProduct = annualStoreProduct
         let priceText = yearlyProduct?.displayPrice ?? "USD 4,99"
 
         return Button {
@@ -294,7 +304,7 @@ struct PaywallView: View {
 
     private func lifetimePlanCard(theme: AppTheme) -> some View {
         let isSelected = selectedPlan == .lifetime
-        let lifetimeProduct = products.first(where: { $0.id.contains("lifetime") })
+        let lifetimeProduct = lifetimeStoreProduct
         let priceText = lifetimeProduct?.displayPrice ?? "USD 19,99"
 
         return Button {
@@ -432,8 +442,8 @@ struct PaywallView: View {
     // MARK: - 9. Bottom CTA
 
     private func bottomCTASection(theme: AppTheme) -> some View {
-        let yearlyProduct = products.first(where: { $0.id.contains("yearly") || $0.id.contains("founder") })
-        let lifetimeProduct = products.first(where: { $0.id.contains("lifetime") })
+        let yearlyProduct = annualStoreProduct
+        let lifetimeProduct = lifetimeStoreProduct
         let yearlyPrice = yearlyProduct?.displayPrice ?? "USD 4,99"
         let lifetimePrice = lifetimeProduct?.displayPrice ?? "USD 19,99"
 
@@ -455,7 +465,9 @@ struct PaywallView: View {
                 if let targetProduct {
                     performPurchase(targetProduct)
                 } else {
-                    simulatePremiumPurchase()
+                    errorMessage = String(localized: "No se pudieron cargar los productos de la App Store. Comprueba tu conexión e inténtalo de nuevo.", comment: "Paywall: products unavailable error")
+                    showErrorAlert = true
+                    Task { await loadStoreKitProducts() }
                 }
             } label: {
                 if isLoading {
@@ -570,17 +582,6 @@ struct PaywallView: View {
         }
     }
 
-    private func simulatePremiumPurchase() {
-        isLoading = true
-        Task {
-            await dependencies.subscriptionService.simulatePremiumSubscription(active: true)
-            try? await Task.sleep(for: .seconds(0.5))
-            await MainActor.run {
-                self.isLoading = false
-                dismiss()
-            }
-        }
-    }
 }
 
 // MARK: - Preview

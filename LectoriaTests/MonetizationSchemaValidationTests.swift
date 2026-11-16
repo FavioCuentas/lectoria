@@ -6,9 +6,24 @@ import Foundation
 
 struct MonetizationSchemaValidationTests {
 
-    @Test("SQL Migration file exists and contains essential table definitions")
+    /// Migración dentro del repositorio, resuelta desde la ubicación de este archivo de pruebas.
+    static let migrationURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent() // LectoriaTests/
+        .deletingLastPathComponent() // raíz del repositorio
+        .appendingPathComponent("supabase/migrations/20260730000000_monetization_schema.sql")
+
+    /// Solo ejecutable donde el sistema de archivos del repositorio es accesible (Mac/simulador);
+    /// en un iPhone físico el sandbox no puede leer el disco de la Mac y la prueba se omite.
+    static var migrationFileReachable: Bool {
+        FileManager.default.fileExists(atPath: migrationURL.path)
+    }
+
+    @Test(
+        "SQL Migration file exists and contains essential table definitions",
+        .enabled(if: MonetizationSchemaValidationTests.migrationFileReachable, "Repositorio no accesible desde este destino de pruebas (dispositivo físico)")
+    )
     func testMigrationFileStructure() throws {
-        let migrationURL = URL(fileURLWithPath: "/Users/faviocuentas/Documents/Projects/Lectoria IA/supabase/migrations/20260730000000_monetization_schema.sql")
+        let migrationURL = Self.migrationURL
         #expect(FileManager.default.fileExists(atPath: migrationURL.path))
 
         let sqlContent = try String(contentsOf: migrationURL, encoding: .utf8)

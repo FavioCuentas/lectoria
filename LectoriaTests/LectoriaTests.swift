@@ -15,10 +15,10 @@ struct LectoriaTests {
         #expect(lifetime.isUnlimited == true)
         #expect(inst.isUnlimited == true)
         
-        #expect(free.displayName == "Plan Gratuito")
-        #expect(annual.displayName == "Premium Anual")
-        #expect(lifetime.displayName == "Premium De por Vida")
-        #expect(inst.displayName == "Acceso Institucional")
+        #expect(free.displayName == "Lectoría Free")
+        #expect(annual.displayName == "Premium Regular")
+        #expect(lifetime.displayName == "Lectoría Lifetime")
+        #expect(inst.displayName == "Lectoría Institucional")
     }
     
     @Test func testEntitlementManagerFreePlanLimits() async throws {

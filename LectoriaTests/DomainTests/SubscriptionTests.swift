@@ -36,7 +36,7 @@ struct SubscriptionTests {
         #expect(limits.documentsLimit == 5)
         #expect(limits.highlightsLimit == Int.max)
         #expect(limits.notesLimit == Int.max)
-        #expect(limits.aiActionsLimit == 10)
+        #expect(limits.aiActionsLimit == 3)
         
         #expect(await entitlementService.canPerformAction(.importDocument) == true)
         
