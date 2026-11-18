@@ -755,7 +755,8 @@ struct EPUBReaderView: View {
                     publicationID: record.id,
                     format: record.publicationType.analyticsFormat,
                     analyticsService: dependencies.analyticsService,
-                    readingSessionRepository: dependencies.readingSessionRepository
+                    readingSessionRepository: dependencies.readingSessionRepository,
+                    progressProvider: { currentLocation?.locator.locations.totalProgression }
                 )
                 coordinator.startSession()
                 self.sessionCoordinator = coordinator

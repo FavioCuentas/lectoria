@@ -16,13 +16,18 @@ import SwiftUI
 public final class ReadingSessionCoordinator {
     public let publicationID: UUID
     public let format: String
+    /// Identificador único de esta sesión: checkpoints y cierre actualizan el mismo registro.
+    public let sessionID: UUID
 
     private let analyticsService: any AnalyticsService
     private let readingSessionRepository: (any ReadingSessionRepository)?
     private let nowProvider: () -> ContinuousClock.Instant
+    /// Progreso actual del documento (0.0 a 1.0), si el lector lo conoce.
+    private let progressProvider: (@MainActor () -> Double?)?
 
     // Estado interno
     private var startedAt: Date?
+    private var startPercentage: Double = 0
     private var lastResumeInstant: ContinuousClock.Instant?
     private var accumulatedDuration: Duration = .zero
     public private(set) var isSessionActive: Bool = false
@@ -42,8 +47,11 @@ public final class ReadingSessionCoordinator {
         format: String,
         analyticsService: any AnalyticsService,
         readingSessionRepository: (any ReadingSessionRepository)? = nil,
+        progressProvider: (@MainActor () -> Double?)? = nil,
         nowProvider: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now }
     ) {
+        self.sessionID = UUID()
+        self.progressProvider = progressProvider
         self.publicationID = publicationID
         self.format = format
         self.analyticsService = analyticsService
@@ -57,6 +65,7 @@ public final class ReadingSessionCoordinator {
         guard !isSessionActive && !hasEnded else { return }
 
         self.startedAt = Date()
+        self.startPercentage = progressProvider?() ?? 0
         self.lastResumeInstant = nowProvider()
         self.isSessionActive = true
     }
@@ -104,12 +113,13 @@ public final class ReadingSessionCoordinator {
         // 1. Guardar registro histórico local en repositorio SwiftData
         if let repo = readingSessionRepository {
             let sessionRecord = ReadingSession(
+                id: sessionID,
                 publicationID: publicationID,
                 startedAt: startTime,
                 endedAt: endTime,
                 activeSeconds: totalSeconds,
-                startPercentage: 0.0,
-                endPercentage: 0.0
+                startPercentage: startPercentage,
+                endPercentage: currentPercentage
             )
             Task {
                 try? await repo.save(sessionRecord)
@@ -123,16 +133,22 @@ public final class ReadingSessionCoordinator {
         ])
     }
 
+    /// Progreso al momento de guardar; si no hay proveedor, se conserva el inicial.
+    private var currentPercentage: Double {
+        progressProvider?() ?? startPercentage
+    }
+
     private func saveCheckpoint() {
         guard let repo = readingSessionRepository, let startTime = startedAt else { return }
         let currentSeconds = max(0, Int(accumulatedDuration.components.seconds))
         let checkpoint = ReadingSession(
+            id: sessionID,
             publicationID: publicationID,
             startedAt: startTime,
             endedAt: Date(),
             activeSeconds: currentSeconds,
-            startPercentage: 0.0,
-            endPercentage: 0.0
+            startPercentage: startPercentage,
+            endPercentage: currentPercentage
         )
         Task {
             try? await repo.save(checkpoint)
