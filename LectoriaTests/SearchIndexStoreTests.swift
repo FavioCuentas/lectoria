@@ -10,10 +10,11 @@ struct SearchIndexStoreTests {
     }
 
     @Test func testFTSExpressionQuotesWordsAndPrefixesLast() {
-        #expect(SearchQuery.ftsExpression(for: "hola mundo") == "\"hola\" \"mundo\"*")
+        #expect(SearchQuery.ftsExpression(for: "hola mundo") == "\"hola mundo\"*")
         #expect(SearchQuery.ftsExpression(for: "  ") == nil)
         #expect(SearchQuery.ftsExpression(for: "*-()") == nil)
         #expect(SearchQuery.ftsExpression(for: "a\"b") == "\"a\"\"b\"*")
+        #expect(SearchQuery.ftsExpression(for: "  hola   * mundo ") == "\"hola mundo\"*")
     }
 
     @Test func testSearchIgnoresCaseAndAccents() async throws {
@@ -66,5 +67,19 @@ struct SearchIndexStoreTests {
         try Data("garbage that is not sqlite".utf8).write(to: url)
         let store = try SearchIndexStore(url: url)
         #expect(try await store.search("x").isEmpty)
+    }
+
+    /// Los lectores buscan la frase literal: el índice debe pedir las palabras juntas y en orden,
+    /// o mostraría resultados que al abrirlos dicen "No se encontraron resultados".
+    @Test func testMultiWordQueryIsAPhrase() async throws {
+        let store = try makeStore()
+        let id = UUID()
+        try await store.replace(publicationID: id, chunks: [
+            IndexChunk(locator: "0", label: "P", text: "la ballena blanca nadaba"),
+            IndexChunk(locator: "1", label: "P", text: "blanca era la ballena")
+        ])
+        let result = try #require(try await store.search("ballena bla").first)
+        #expect(result.totalMatches == 1)
+        #expect(result.hits.map(\.locator) == ["0"])
     }
 }

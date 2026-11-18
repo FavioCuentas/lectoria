@@ -71,4 +71,14 @@ struct ContentChunkerTests {
         #expect(chunks.map(\.locator) == ["0", "1"])
         #expect(chunks.first?.text.contains("presupuesto") == true)
     }
+
+    /// El índice ignora acentos; la búsqueda del lector de texto también debe hacerlo.
+    @Test func testTextReaderSearchIgnoresAccentsAndCase() async throws {
+        let (record, url) = try install(Data("La CANCIÓN del pirata.\n\nOtro párrafo.".utf8), ext: "txt", type: .txt)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let adapter = TextReaderAdapter()
+        try await adapter.open(publication: record)
+        #expect(try await adapter.search("cancion").count == 1)
+        #expect(try await adapter.search("PÁRRAFO").count == 1)
+    }
 }

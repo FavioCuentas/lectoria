@@ -69,6 +69,7 @@ struct LectoriaApp: App {
                 // Indexar para la búsqueda global lo que falte (documentos anteriores o fallidos),
                 // con la app ya en pantalla.
                 try? await Task.sleep(for: .seconds(3))
+                await PublicationRecordUpdates.repairPresentationFileNames(repository: dependencies.publicationRepository)
                 await dependencies.searchIndexingService.backfill()
             }
         }

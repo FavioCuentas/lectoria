@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import SwiftData
 @testable import Lectoria
+@preconcurrency import ReadiumShared
 
 @MainActor
 struct GlobalSearchServiceTests {
@@ -54,5 +55,28 @@ struct GlobalSearchServiceTests {
     @Test func testEmptyQueryReturnsEmpty() async throws {
         let service = GlobalSearchService(store: try makeStore(), container: container)
         #expect(await service.search("   ", publications: [publication("Algo")]).isEmpty)
+    }
+
+    /// Los destacados de EPUB guardan el localizador de Readium tal cual (`jsonString`).
+    @Test func testEPUBAnchorFromReadiumLocatorJSON() throws {
+        let locator = Locator(href: try #require(AnyURL(string: "OEBPS/ch2.xhtml")), mediaType: .xhtml, title: "Capítulo dos")
+        let anchor = try locator.jsonString()
+        let location = try #require(ReaderAnchor.epubLocation(from: anchor))
+        #expect(location.locator.href.string == "OEBPS/ch2.xhtml")
+        #expect(ReaderAnchor.epubLocation(from: "no es json") == nil)
+        #expect(ReaderAnchor.epubLocation(from: nil) == nil)
+    }
+
+    /// Las notas de EPUB no guardan anchor propio: usan el de su destacado.
+    @Test func testNoteWithoutAnchorUsesItsHighlightAnchor() async throws {
+        let book = publication("Libro")
+        try await SwiftDataPublicationRepository(container: container).save(book)
+        let highlight = Highlight(publicationID: book.id, anchor: "{\"href\":\"ch1.xhtml\"}", selectedText: "texto")
+        try await SwiftDataHighlightRepository(container: container).save(highlight)
+        try await SwiftDataNoteRepository(container: container).save(Note(publicationID: book.id, highlightID: highlight.id, body: "comentario único"))
+
+        let service = GlobalSearchService(store: try makeStore(), container: container)
+        let note = try #require(await service.search("único", publications: [book]).annotations.first)
+        #expect(note.anchor == highlight.anchor)
     }
 }

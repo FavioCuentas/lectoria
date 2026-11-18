@@ -962,9 +962,7 @@ struct TextReaderView: View {
             try await openAdapter()
             
             // Registrar fecha de apertura
-            var updatedRecord = record
-            updatedRecord.lastOpenedAt = Date()
-            try? await dependencies.publicationRepository.save(updatedRecord)
+            await PublicationRecordUpdates.markOpened(record.id, repository: dependencies.publicationRepository)
 
             // 3. Obtener el índice (TOC)
             self.tocItems = (try? await getTableOfContents()) ?? []

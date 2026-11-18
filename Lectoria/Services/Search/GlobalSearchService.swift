@@ -76,6 +76,13 @@ final class GlobalSearchService {
         )
     }
 
+    private func highlightAnchor(_ id: UUID?, in context: ModelContext) -> String? {
+        guard let id else { return nil }
+        var descriptor = FetchDescriptor<HighlightModel>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return (try? context.fetch(descriptor))?.first?.anchor
+    }
+
     /// Notas (cuerpo o etiquetas) y destacados (texto seleccionado), los más recientes primero.
     private func annotations(matching query: String, in publications: Set<UUID>) -> [AnnotationHit] {
         let context = container.mainContext
@@ -85,7 +92,9 @@ final class GlobalSearchService {
                     && (note.body.localizedStandardContains(query) || note.tags.contains { $0.localizedStandardContains(query) })
             }
             .prefix(Self.maxAnnotationsPerKind)
-            .map { AnnotationHit(id: $0.id, publicationID: $0.publicationID, kind: .note, text: $0.body, anchor: $0.anchor) }
+            // Las notas de EPUB no guardan anchor propio: se usa el de su destacado.
+            .map { AnnotationHit(id: $0.id, publicationID: $0.publicationID, kind: .note, text: $0.body,
+                                 anchor: $0.anchor ?? $0.highlight?.anchor ?? highlightAnchor($0.highlightID, in: context)) }
 
         let highlights = ((try? context.fetch(FetchDescriptor<HighlightModel>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]))) ?? [])
             .filter { publications.contains($0.publicationID) && $0.selectedText.localizedStandardContains(query) }

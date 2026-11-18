@@ -289,7 +289,7 @@ struct LibraryView: View {
         case .pdf:
             PDFReaderView(record: record, initialLocation: data.flatMap { try? JSONDecoder().decode(PDFLocation.self, from: $0) }, initialSearch: search)
         case .epub:
-            EPUBReaderView(record: record, initialLocation: data.flatMap { try? JSONDecoder().decode(EPUBLocation.self, from: $0) }, initialSearch: search)
+            EPUBReaderView(record: record, initialLocation: ReaderAnchor.epubLocation(from: anchor), initialSearch: search)
         case .txt, .markdown, .pastedText:
             TextReaderView(record: record, initialLocation: data.flatMap { try? JSONDecoder().decode(TextLocation.self, from: $0) }, initialSearch: search)
         case .pptx:

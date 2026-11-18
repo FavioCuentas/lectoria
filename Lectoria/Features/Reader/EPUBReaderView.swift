@@ -786,9 +786,7 @@ struct EPUBReaderView: View {
             try await adapter.open(publication: record)
             
             // Registrar fecha de apertura
-            var updatedRecord = record
-            updatedRecord.lastOpenedAt = Date()
-            try? await dependencies.publicationRepository.save(updatedRecord)
+            await PublicationRecordUpdates.markOpened(record.id, repository: dependencies.publicationRepository)
             
             // 3. Extraer la Tabla de Contenidos
             self.tocItems = (try? await adapter.tableOfContents()) ?? []
