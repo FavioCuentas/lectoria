@@ -15,6 +15,9 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     let onSelectionCleared: (() -> Void)?
     let onAddNoteRequest: ((String, Int) -> Void)?
     let onTranslateRequest: ((String) -> Void)?
+    /// Coincidencias de búsqueda a sombrear; la activa va en otro color.
+    var searchMatches: [PDFSearchMatch] = []
+    var activeSearchIndex: Int? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -62,6 +65,7 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
 
         // Renderizar o actualizar resaltados de la página activa
         context.coordinator.renderAnnotations(on: pdfView)
+        context.coordinator.applySearchHighlights(searchMatches, activeIndex: activeSearchIndex, on: pdfView)
     }
 
     // MARK: - Coordinator
@@ -70,6 +74,21 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     final class Coordinator: NSObject {
         var parent: PDFPresentationPreviewWrapper
         var isUpdatingFromPDFView = false
+        /// Última búsqueda sombreada, para no repetir el trabajo en cada actualización.
+        private var appliedSearchSignature: [UUID] = []
+        private var appliedActiveIndex: Int? = nil
+
+        func applySearchHighlights(_ matches: [PDFSearchMatch], activeIndex: Int?, on pdfView: PDFView) {
+            let signature = matches.map(\.id)
+            guard signature != appliedSearchSignature || activeIndex != appliedActiveIndex else { return }
+            appliedSearchSignature = signature
+            appliedActiveIndex = activeIndex
+            if matches.isEmpty {
+                PDFTextSearch.clearHighlights(on: pdfView)
+            } else {
+                PDFTextSearch.applyHighlights(matches, activeIndex: activeIndex, on: pdfView)
+            }
+        }
         nonisolated(unsafe) private var notificationObservers: [any NSObjectProtocol] = []
 
         init(_ parent: PDFPresentationPreviewWrapper) {

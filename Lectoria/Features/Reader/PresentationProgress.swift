@@ -17,3 +17,19 @@ enum PresentationProgress {
         return min(max(0, page - 1), totalSlides - 1)
     }
 }
+
+// MARK: - PresentationSearchText
+
+/// Textos de la búsqueda dentro de presentaciones.
+enum PresentationSearchText {
+    /// "1 coincidencia en 1 diapositiva" / "5 coincidencias en 3 diapositivas".
+    static func slideSummary(matchCount: Int, slideCount: Int) -> String {
+        let matches = matchCount == 1
+            ? String(localized: "1 coincidencia", comment: "Presentation search: one match")
+            : String(localized: "\(matchCount) coincidencias", comment: "Presentation search: N matches")
+        let slides = slideCount == 1
+            ? String(localized: "1 diapositiva", comment: "Presentation search: one slide")
+            : String(localized: "\(slideCount) diapositivas", comment: "Presentation search: N slides")
+        return String(localized: "\(matches) en \(slides)", comment: "Presentation search summary: matches in slides")
+    }
+}

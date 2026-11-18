@@ -63,6 +63,19 @@ struct PresentationReaderView: View {
     @State private var inlineBubbleText = ""
     @State private var isLoadingInline = false
 
+    // Búsqueda (solo en la ruta PDF)
+    @State private var showSearch = false
+    @State private var searchQuery = ""
+    @State private var searchMatches: [PDFSearchMatch] = []
+    @State private var noteMatches: [PresentationSearchResult] = []
+    @State private var activeMatchIndex: Int? = nil
+    @State private var pendingSearchJump: Int? = nil
+    @State private var pendingNoteJump: PresentationSearchResult? = nil
+    @State private var isSearching = false
+    @State private var searchTask: Task<Void, Never>? = nil
+    /// Notas del presentador por índice de diapositiva visible (= página del PDF).
+    @State private var speakerNotes: [Int: String] = [:]
+
     /// Ruta PDF (PDFKit: búsqueda, resaltado, progreso) si el archivo es PDF o si ya existe el PDF
     /// convertido de la presentación. Se decide una sola vez al abrir: la vista nunca cambia de
     /// ruta mientras se lee; un PDF recién convertido se usa desde la siguiente apertura.
@@ -254,6 +267,20 @@ struct PresentationReaderView: View {
                 }
 
                 Spacer()
+
+                if pdfDocument != nil {
+                    Button {
+                        showSearch = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(showSearch || activeMatchIndex != nil ? AppColor.accent(for: theme) : AppColor.textPrimary(for: theme))
+                            .frame(width: 36, height: 36)
+                            .background(AppColor.surfaceSecondary(for: theme))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel(String(localized: "Buscar en la presentación", comment: "Presentation search button"))
+                }
 
                 // Botón Notas
                 notesToolbarButton(theme: theme)
@@ -618,7 +645,9 @@ struct PresentationReaderView: View {
                                 onTranslateRequest: { text in
                                     selectedText = text
                                     triggerAIAction("translate_en")
-                                }
+                                },
+                                searchMatches: searchMatches,
+                                activeSearchIndex: activeMatchIndex
                             )
                         } else if let fileURL, errorMessage == nil {
                             // Ruta B: Quick Look nativo del original (.ppt / .pptx)
@@ -655,7 +684,21 @@ struct PresentationReaderView: View {
                         }
 
                         // Botón flotante para volver a la diapositiva previa tras un salto
-                        if let originIndex = lastJumpOriginIndex, originIndex != currentSlideIndex, !isFullscreen {
+                        if let activeIndex = activeMatchIndex, !searchMatches.isEmpty, !showSearch, !isFullscreen {
+                            ReaderSearchNavigatorBar(
+                                query: searchQuery,
+                                activeIndex: activeIndex,
+                                total: searchMatches.count,
+                                theme: theme,
+                                onPrevious: { selectSearchMatch(at: (activeIndex - 1 + searchMatches.count) % searchMatches.count) },
+                                onNext: { selectSearchMatch(at: (activeIndex + 1) % searchMatches.count) },
+                                onShowList: { showSearch = true },
+                                onClose: { clearSearch() }
+                            )
+                            .padding(.horizontal, AppSpacing.md)
+                            .padding(.bottom, AppSpacing.sm)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        } else if let originIndex = lastJumpOriginIndex, originIndex != currentSlideIndex, !isFullscreen {
                             Button {
                                 lastJumpOriginIndex = nil
                                 currentSlideIndex = originIndex
@@ -773,6 +816,18 @@ struct PresentationReaderView: View {
         }
         .onDisappear {
             sessionCoordinator?.endSession()
+            searchTask?.cancel()
+        }
+        .sheet(isPresented: $showSearch, onDismiss: {
+            if let index = pendingSearchJump {
+                pendingSearchJump = nil
+                selectSearchMatch(at: index)
+            } else if let note = pendingNoteJump {
+                pendingNoteJump = nil
+                showSpeakerNote(note)
+            }
+        }) {
+            searchSheet(theme: theme)
         }
         .sheet(isPresented: $notesSession.isSheetPresented, onDismiss: {
             notesSession.close()
@@ -1327,6 +1382,10 @@ struct PresentationReaderView: View {
                 Task { await renderer.ensureRendered(localFileName: localFileName, publicationID: publicationID) }
             }
 
+            if pdfDocument != nil, RenderedPresentationStore.isConvertible(localFileName: record.localFileName) {
+                loadSpeakerNotes(from: validURL)
+            }
+
             if pdfDocument != nil {
                 let saved = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id)
                 self.currentSlideIndex = PresentationProgress.resumeIndex(savedPageNumber: saved?.pageNumber, totalSlides: totalSlides)
@@ -1357,6 +1416,207 @@ struct PresentationReaderView: View {
         } else {
             self.errorMessage = String(localized: "El archivo de la presentación no fue encontrado en el almacenamiento local.", comment: "File missing error")
             self.isLoading = false
+        }
+    }
+
+    // MARK: - Búsqueda
+
+    private func searchSheet(theme: AppTheme) -> some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
+                    TextField(String(localized: "Buscar en las diapositivas…", comment: "Presentation search placeholder"), text: $searchQuery)
+                        .textFieldStyle(.plain)
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .submitLabel(.search)
+                        .onSubmit { performSearch() }
+                    if !searchQuery.isEmpty {
+                        Button {
+                            clearSearch()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                        }
+                        .accessibilityLabel(String(localized: "Borrar búsqueda", comment: "Clear search"))
+                    }
+                }
+                .padding(AppSpacing.md)
+                .background(AppColor.surfaceSecondary(for: theme))
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.vertical, AppSpacing.sm)
+
+                Divider().background(AppColor.border(for: theme))
+
+                if isSearching {
+                    VStack(spacing: AppSpacing.xs) {
+                        Spacer()
+                        ProgressView().tint(AppColor.accent(for: theme))
+                        Text(String(localized: "Buscando…", comment: "Searching"))
+                            .font(AppTypography.callout)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                        Spacer()
+                    }
+                } else if searchMatches.isEmpty && noteMatches.isEmpty && !searchQuery.isEmpty {
+                    VStack {
+                        Spacer()
+                        Text(String(localized: "No se encontraron resultados.", comment: "No search results"))
+                            .font(AppTypography.body)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                        Spacer()
+                    }
+                } else {
+                    List {
+                        if !searchMatches.isEmpty {
+                            Section {
+                                ForEach(Array(searchMatches.enumerated()), id: \.element.id) { index, match in
+                                    Button {
+                                        activeMatchIndex = index
+                                        pendingSearchJump = index
+                                        showSearch = false
+                                    } label: {
+                                        searchRow(title: match.pageTitle, snippet: match.snippet, theme: theme)
+                                    }
+                                    .listRowBackground(
+                                        index == activeMatchIndex
+                                            ? AppColor.accent(for: theme).opacity(0.12)
+                                            : AppColor.surface(for: theme)
+                                    )
+                                }
+                            } header: {
+                                Text(PresentationSearchText.slideSummary(
+                                    matchCount: searchMatches.count,
+                                    slideCount: PDFTextSearch.pageCount(of: searchMatches)
+                                ))
+                            }
+                        }
+                        if !noteMatches.isEmpty {
+                            Section {
+                                ForEach(noteMatches) { note in
+                                    Button {
+                                        pendingNoteJump = note
+                                        showSearch = false
+                                    } label: {
+                                        searchRow(
+                                            title: String(localized: "Diapositiva \(note.slideIndex + 1)", comment: "Presentation search: slide N"),
+                                            snippet: AttributedString(note.matchSnippet),
+                                            theme: theme
+                                        )
+                                    }
+                                    .listRowBackground(AppColor.surface(for: theme))
+                                }
+                            } header: {
+                                Text(String(localized: "En notas del presentador", comment: "Presentation search: speaker notes section"))
+                            }
+                        }
+                    }
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .background(AppColor.background(for: theme))
+            .navigationTitle(String(localized: "Buscar en la presentación", comment: "Presentation search title"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(String(localized: "Cerrar", comment: "Close")) { showSearch = false }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func searchRow(title: String, snippet: AttributedString, theme: AppTheme) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+            Text(title)
+                .font(AppTypography.footnote.weight(.semibold))
+                .foregroundStyle(AppColor.accent(for: theme))
+            Text(snippet)
+                .font(AppTypography.body)
+                .foregroundStyle(AppColor.textPrimary(for: theme))
+                .lineLimit(2)
+        }
+    }
+
+    private func performSearch() {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, let document = pdfDocument else { return }
+        searchTask?.cancel()
+        isSearching = true
+        activeMatchIndex = nil
+        searchMatches = []
+        noteMatches = []
+        let notes = speakerNotes
+        searchTask = Task { @MainActor in
+            // Ceder un ciclo para que se pinte "Buscando…" antes de recorrer el PDF.
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            let matches = PDFTextSearch.search(query, in: document, pageLabel: { index in
+                String(localized: "Diapositiva \(index + 1)", comment: "Presentation search: slide N")
+            })
+            let inNotes = PresentationSearchEngine(slideTexts: [:], presenterNotes: notes)
+                .search(query: query)
+                .filter(\.isPresenterNote)
+            guard !Task.isCancelled else { return }
+            searchMatches = matches
+            noteMatches = inNotes
+            isSearching = false
+        }
+    }
+
+    /// Activa la coincidencia `index`: la sombrea en naranja y salta a su diapositiva.
+    private func selectSearchMatch(at index: Int) {
+        guard searchMatches.indices.contains(index) else { return }
+        let target = searchMatches[index].pageIndex
+        withAnimation(.easeInOut(duration: 0.2)) {
+            activeMatchIndex = index
+        }
+        if target != currentSlideIndex {
+            if lastJumpOriginIndex == nil { lastJumpOriginIndex = currentSlideIndex }
+            currentSlideIndex = target
+        }
+    }
+
+    private func clearSearch() {
+        searchTask?.cancel()
+        searchQuery = ""
+        searchMatches = []
+        noteMatches = []
+        pendingSearchJump = nil
+        pendingNoteJump = nil
+        isSearching = false
+        withAnimation(.easeInOut(duration: 0.2)) {
+            activeMatchIndex = nil
+        }
+    }
+
+    /// Las notas del presentador no están en el PDF: se salta a su diapositiva y se muestran
+    /// completas en el globo inferior, sin sombreado.
+    private func showSpeakerNote(_ note: PresentationSearchResult) {
+        if note.slideIndex != currentSlideIndex, note.slideIndex < max(1, totalSlides) {
+            lastJumpOriginIndex = currentSlideIndex
+            currentSlideIndex = note.slideIndex
+        }
+        withAnimation(.spring(response: 0.3)) {
+            inlineBubbleTitle = String(localized: "Notas del presentador", comment: "Speaker notes bubble title")
+            inlineBubbleText = speakerNotes[note.slideIndex] ?? note.matchSnippet
+            isLoadingInline = false
+            showInlineBubble = true
+        }
+    }
+
+    /// Lee las notas del presentador del `.pptx` original, indexadas como las páginas del PDF.
+    private func loadSpeakerNotes(from original: URL) {
+        Task {
+            guard let slides = try? await PPTXParser.visibleSlides(url: original) else { return }
+            var notes: [Int: String] = [:]
+            for (index, slide) in slides.enumerated() {
+                if let text = slide.speakerNotes, !text.isEmpty { notes[index] = text }
+            }
+            speakerNotes = notes
         }
     }
 
