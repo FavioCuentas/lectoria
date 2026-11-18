@@ -73,13 +73,6 @@ struct HomeView: View {
         .background(AppColor.background(for: theme))
         .navigationTitle(String(localized: "Inicio", comment: "Home screen title"))
         .navigationBarTitleDisplayMode(.inline)
-        .fileImporter(
-            isPresented: $router.isShowingImport,
-            allowedContentTypes: PublicationType.allSupportedUTTypes,
-            allowsMultipleSelection: false
-        ) { result in
-            router.handleImportResult(result)
-        }
         .navigationDestination(item: $selectedPublication) { record in
             switch record.publicationType {
             case .pdf:

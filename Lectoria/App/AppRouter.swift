@@ -80,22 +80,24 @@ final class AppRouter {
 
     private static let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "AppRouter")
 
-    /// Abre el flujo de importación con protección contra pulsaciones repetidas.
+    /// Selector de archivos presentado desde UIKit (ver `DocumentImportPicker`).
+    @ObservationIgnored private let importPicker = DocumentImportPicker()
+
+    /// Abre el selector de archivos con protección contra pulsaciones repetidas.
+    /// El archivo elegido se deja en `pendingImportURL`, que `RootView` procesa.
     func showImport() {
         guard !isShowingImport else { return }
         isShowingImport = true
-    }
-
-    /// Maneja el resultado del selector de archivos (`.fileImporter`).
-    func handleImportResult(_ result: Result<[URL], Error>) {
-        isShowingImport = false
-        switch result {
-        case .success(let urls):
-            if let url = urls.first {
-                pendingImportURL = url
+        let presented = importPicker.present(contentTypes: PublicationType.allSupportedUTTypes) { [weak self] url in
+            guard let self else { return }
+            self.isShowingImport = false
+            if let url {
+                self.pendingImportURL = url
             }
-        case .failure:
-            Self.logger.error("Error al seleccionar archivo en el selector del sistema.")
+        }
+        if !presented {
+            isShowingImport = false
+            Self.logger.error("No se encontró un controlador desde el que presentar el selector de archivos.")
         }
     }
 
