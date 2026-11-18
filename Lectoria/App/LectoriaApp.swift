@@ -66,6 +66,10 @@ struct LectoriaApp: App {
                 withAnimation(.easeOut(duration: 0.4)) {
                     showSplash = false
                 }
+                // Indexar para la búsqueda global lo que falte (documentos anteriores o fallidos),
+                // con la app ya en pantalla.
+                try? await Task.sleep(for: .seconds(3))
+                await dependencies.searchIndexingService.backfill()
             }
         }
     }

@@ -80,6 +80,7 @@ struct PublicationCard: View {
             Button(role: .destructive) {
                 Task {
                     try? await dependencies.publicationRepository.delete(id: publication.id)
+                    await dependencies.searchIndexingService.remove(publicationID: publication.id)
                     await MainActor.run {
                         onUpdate?()
                     }
