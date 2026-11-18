@@ -21,6 +21,16 @@ struct LibraryView: View {
     @State private var showPaywall = false
     @State private var selectedArchivedRecord: PublicationRecord?
 
+    // Búsqueda global (títulos, contenido, notas y destacados)
+    @State private var searchResults = GlobalSearchResults()
+    @State private var isSearchingLibrary = false
+    @State private var contentTarget: ContentSearchTarget?
+    @State private var annotationTarget: AnnotationOpenTarget?
+
+    private var trimmedSearch: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     var body: some View {
         @Bindable var router = router
         let theme = themeManager.currentTheme
@@ -35,7 +45,9 @@ struct LibraryView: View {
             filterBar(theme: theme)
 
             // Contenido
-            if hasDocuments {
+            if hasDocuments && !trimmedSearch.isEmpty {
+                searchResultsView(theme: theme)
+            } else if hasDocuments {
                 contentView(theme: theme)
             } else {
                 EmptyStateView(
@@ -56,9 +68,12 @@ struct LibraryView: View {
         .navigationBarTitleDisplayMode(.large)
         .searchable(
             text: $searchText,
-            prompt: String(localized: "Buscar por título, autor…",
+            prompt: String(localized: "Buscar en títulos, contenido y notas…",
                           comment: "Library search placeholder")
         )
+        .task(id: trimmedSearch) {
+            await runSearch(trimmedSearch)
+        }
         .navigationDestination(item: $router.selectedPublication) { record in
             switch record.publicationType {
             case .pdf:
@@ -70,6 +85,12 @@ struct LibraryView: View {
             case .pptx:
                 PresentationOpenerView(record: record)
             }
+        }
+        .navigationDestination(item: $contentTarget) { target in
+            readerView(for: target.publication)
+        }
+        .navigationDestination(item: $annotationTarget) { target in
+            readerView(for: target.publication)
         }
         .sheet(isPresented: $showActiveSelector) {
             ActiveDocumentSelectorView(publications: publicationModels.map { $0.toDomain() }) {}
@@ -255,6 +276,74 @@ struct LibraryView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Búsqueda global
+
+    @ViewBuilder
+    private func readerView(for record: PublicationRecord) -> some View {
+        switch record.publicationType {
+        case .pdf:
+            PDFReaderView(record: record)
+        case .epub:
+            EPUBReaderView(record: record)
+        case .txt, .markdown, .pastedText:
+            TextReaderView(record: record)
+        case .pptx:
+            PresentationOpenerView(record: record)
+        }
+    }
+
+    private func searchResultsView(theme: AppTheme) -> some View {
+        let records = publicationModels.map { $0.toDomain() }
+        let byID = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let progress = Dictionary(publicationModels.map { model in
+            (model.id, model.progressList.max(by: { $0.updatedAt < $1.updatedAt })?.percentage ?? 0)
+        }, uniquingKeysWith: { first, _ in first })
+
+        return LibrarySearchResultsView(
+            results: searchResults,
+            publications: byID,
+            progress: progress,
+            pendingIndexCount: dependencies.searchIndexingService.pendingCount,
+            isSearching: isSearchingLibrary,
+            theme: theme,
+            onOpenPublication: { handlePublicationTap($0) },
+            onOpenHit: { record, hit in
+                guard !showArchivedAlertIfNeeded(record) else { return }
+                contentTarget = ContentSearchTarget(publication: record, query: trimmedSearch, scope: hit.locator)
+            },
+            onOpenAnnotation: { record, annotation in
+                guard !showArchivedAlertIfNeeded(record) else { return }
+                annotationTarget = AnnotationOpenTarget(publication: record, anchor: annotation.anchor)
+            }
+        )
+    }
+
+    /// Espera 300 ms sin cambios antes de buscar; `task(id:)` cancela la búsqueda anterior,
+    /// así que solo los resultados de la última consulta llegan a la pantalla.
+    private func runSearch(_ query: String) async {
+        guard !query.isEmpty else {
+            searchResults = GlobalSearchResults()
+            isSearchingLibrary = false
+            return
+        }
+        isSearchingLibrary = true
+        try? await Task.sleep(for: .milliseconds(300))
+        guard !Task.isCancelled else { return }
+        let service = GlobalSearchService(store: dependencies.searchIndexStore, container: modelContext.container)
+        let results = await service.search(query, publications: publicationModels.map { $0.toDomain() })
+        guard !Task.isCancelled else { return }
+        searchResults = results
+        isSearchingLibrary = false
+    }
+
+    /// Los documentos archivados aparecen en los resultados, pero al tocarlos se avisa.
+    private func showArchivedAlertIfNeeded(_ record: PublicationRecord) -> Bool {
+        guard record.isArchived else { return false }
+        selectedArchivedRecord = record
+        showArchivedAlert = true
+        return true
     }
 
     // MARK: - Actions
