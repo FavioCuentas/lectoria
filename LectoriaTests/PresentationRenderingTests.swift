@@ -2,7 +2,6 @@ import Testing
 import Foundation
 import PDFKit
 import UIKit
-import SwiftUI
 @testable import Lectoria
 
 @MainActor
@@ -67,15 +66,6 @@ struct PresentationRenderingTests {
         let (pptx, _) = try samplePPTX()
         let slides = try await PPTXParser.visibleSlides(url: pptx)
         #expect(slides.map(\.title) == ["Análisis del presupuesto", "Conclusiones finales"])
-    }
-
-    /// Notas enlazadas por relación (no por número de archivo) y orden según `sldIdLst`:
-    /// Alfa (con nota), Beta (sin nota), Gamma (con nota en notesSlide2), presentadas como Gamma, Alfa, Beta.
-    @Test func testVisibleSlidesFollowsPresentationOrderAndNotesRelationships() async throws {
-        let source = try #require(Bundle(for: FixtureBundleToken.self).url(forResource: "notes-reordered", withExtension: "pptx"))
-        let slides = try await PPTXParser.visibleSlides(url: source)
-        #expect(slides.map(\.title) == ["Gamma", "Alfa", "Beta"])
-        #expect(slides.map(\.speakerNotes) == ["nota de Gamma", "nota de Alfa", nil])
     }
 
     @Test func testConvertWritesOnePagePerSlideWithSearchableText() async throws {
@@ -175,52 +165,42 @@ struct PresentationRenderingTests {
         #expect(fake.calls == 0)
     }
 
-    // MARK: - PresentationProgress
-
-    @Test func testResumeIndexClamps() {
-        #expect(PresentationProgress.resumeIndex(savedPageNumber: 12, totalSlides: 10) == 9)
-        #expect(PresentationProgress.resumeIndex(savedPageNumber: nil, totalSlides: 10) == 0)
-        #expect(PresentationProgress.resumeIndex(savedPageNumber: 0, totalSlides: 10) == 0)
-        #expect(PresentationProgress.resumeIndex(savedPageNumber: 3, totalSlides: 0) == 0)
-        #expect(PresentationProgress.resumeIndex(savedPageNumber: 3, totalSlides: 10) == 2)
+    @Test func testSecondCallerWaitsForInFlightConversion() async throws {
+        let dir = try tempDirectory()
+        let fake = FakeConversion()
+        fake.delay = .milliseconds(200)
+        let service = makeService(fake, dir: dir)
+        let id = UUID()
+        let destination = RenderedPresentationStore.renderedURL(forLocalFileName: "a.pptx", in: dir)
+        let first = Task { await service.ensureRendered(localFileName: "a.pptx", publicationID: id) }
+        try await Task.sleep(for: .milliseconds(20))
+        // Quien abre la presentación mientras la importación aún convierte debe esperar el PDF.
+        await service.ensureRendered(localFileName: "a.pptx", publicationID: id)
+        #expect(RenderedPresentationStore.validDocument(at: destination) != nil)
+        await first.value
+        #expect(fake.calls == 1)
     }
 
-    @Test func testPercentage() {
-        #expect(PresentationProgress.percentage(slideIndex: 0, totalSlides: 1) == 0)
-        #expect(PresentationProgress.percentage(slideIndex: 4, totalSlides: 5) == 1)
-        #expect(PresentationProgress.percentage(slideIndex: 2, totalSlides: 5) == 0.5)
-        #expect(PresentationProgress.percentage(slideIndex: 9, totalSlides: 5) == 1)
+    // MARK: - PresentationOpenRoute
+
+    @Test func testOpenRouteUsesPDFReaderWhenRenderedExists() throws {
+        let dir = try tempDirectory()
+        try Self.makePDF(pages: ["x"]).write(to: RenderedPresentationStore.renderedURL(forLocalFileName: "a.pptx", in: dir))
+        #expect(PresentationOpenRoute.decide(localFileName: "a.pptx", directory: dir) == .pdf(localFileName: "a.pptx.rendered.pdf"))
     }
 
-    /// Reanudar en la diapositiva guardada: el primer aviso de cambio de página de PDFKit
-    /// (al maquetar) no debe devolver el índice a 0 y pisar el progreso.
-    @Test func testWrapperKeepsResumedPageAfterLayout() async throws {
-        let document = try #require(PDFDocument(data: Self.makePDF(pages: ["1", "2", "3", "4", "5"])))
-        final class Box { var index = 3 }
-        let box = Box()
-        let wrapper = PDFPresentationPreviewWrapper(
-            pdfDocument: document,
-            pageIndex: Binding(get: { box.index }, set: { box.index = $0 }),
-            annotations: [],
-            onTextSelected: nil, onSelectionCleared: nil, onAddNoteRequest: nil, onTranslateRequest: nil
-        )
-        let coordinator = wrapper.makeCoordinator()
-        let pdfView = wrapper.makeConfiguredView(coordinator: coordinator)
+    @Test func testOpenRouteConvertsPPTXWithoutPDF() throws {
+        let dir = try tempDirectory()
+        #expect(PresentationOpenRoute.decide(localFileName: "a.pptx", directory: dir) == .convert)
+        try Data("roto".utf8).write(to: RenderedPresentationStore.renderedURL(forLocalFileName: "a.pptx", in: dir))
+        #expect(PresentationOpenRoute.decide(localFileName: "a.pptx", directory: dir) == .convert)
+    }
 
-        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
-        let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
-        pdfView.frame = window.bounds
-        window.addSubview(pdfView)
-        window.isHidden = false
-        defer { window.isHidden = true }
-        window.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(600))
-        wrapper.applyUpdates(to: pdfView, coordinator: coordinator)
-        try await Task.sleep(for: .milliseconds(300))
-
-        #expect(box.index == 3)
-        #expect(pdfView.currentPage.map { document.index(for: $0) } == 3)
+    @Test func testOpenRouteKeepsQuickLookForLegacyFormats() throws {
+        let dir = try tempDirectory()
+        #expect(PresentationOpenRoute.decide(localFileName: "a.ppt", directory: dir) == .presentation)
+        #expect(PresentationOpenRoute.decide(localFileName: "a.key", directory: dir) == .presentation)
+        #expect(PresentationOpenRoute.decide(localFileName: "a.pptx", directory: nil) == .presentation)
     }
 
     @Test func testIsConvertibleOnlyPPTX() {

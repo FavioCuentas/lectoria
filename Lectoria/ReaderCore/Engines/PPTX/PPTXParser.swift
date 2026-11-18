@@ -62,11 +62,12 @@ final class PPTXParser: Sendable {
             let slideData = try Data(contentsOf: slideURL)
             let slideContent = SlideXMLParser.parse(data: slideData)
 
-            // Notas del presentador: enlazadas desde ppt/slides/_rels/slideN.xml.rels.
-            // PowerPoint numera los notesSlide solo entre las diapositivas que tienen notas,
-            // así que el número de archivo no coincide con el de la diapositiva.
+            // Intentar cargar notas del presentador
+            let noteNumber = index + 1
+            let notesPath = "ppt/notesSlides/notesSlide\(noteNumber).xml"
+            let notesURL = tempDir.appendingPathComponent(notesPath)
             var speakerNotes: String? = nil
-            if let notesURL = notesSlideURL(forSlideAt: slidePath, in: tempDir),
+            if FileManager.default.fileExists(atPath: notesURL.path),
                let notesData = try? Data(contentsOf: notesURL) {
                 let notesContent = NotesXMLParser.parse(data: notesData)
                 if !notesContent.isEmpty {
@@ -232,38 +233,10 @@ final class PPTXParser: Sendable {
     // MARK: - Slide Discovery
 
     /// Descubre el orden de las diapositivas leyendo las relaciones y/o el directorio de slides.
-    /// Ruta del `notesSlide` relacionado con una diapositiva, si tiene notas.
-    private static func notesSlideURL(forSlideAt slidePath: String, in tempDir: URL) -> URL? {
-        let slideURL = tempDir.appendingPathComponent(slidePath)
-        let relsURL = slideURL.deletingLastPathComponent()
-            .appendingPathComponent("_rels/\(slideURL.lastPathComponent).rels")
-        guard let data = try? Data(contentsOf: relsURL),
-              let rel = RelsXMLParser.parse(data: data).first(where: { $0.type.hasSuffix("/notesSlide") }) else {
-            return nil
-        }
-        let target = slideURL.deletingLastPathComponent().appendingPathComponent(rel.target).standardizedFileURL
-        return FileManager.default.fileExists(atPath: target.path) ? target : nil
-    }
-
     private static func discoverSlideOrder(in tempDir: URL) throws -> [String] {
+        // Intentar leer presentation.xml.rels para obtener el orden correcto
         let relsPath = "ppt/_rels/presentation.xml.rels"
         let relsURL = tempDir.appendingPathComponent(relsPath)
-
-        // Orden real de la presentación: <p:sldIdLst> de presentation.xml, resuelto por r:id.
-        if let relsData = try? Data(contentsOf: relsURL),
-           let presentationData = try? Data(contentsOf: tempDir.appendingPathComponent("ppt/presentation.xml")) {
-            let targets = Dictionary(
-                RelsXMLParser.parse(data: relsData).map { ($0.id, $0.target) },
-                uniquingKeysWith: { first, _ in first }
-            )
-            let ordered = SlideIDListParser.parse(data: presentationData).compactMap { rid -> String? in
-                guard let target = targets[rid] else { return nil }
-                return target.hasPrefix("/") ? String(target.dropFirst()) : "ppt/\(target)"
-            }
-            if !ordered.isEmpty { return ordered }
-        }
-
-        // Respaldo: relaciones ordenadas por el número del archivo.
 
         var slideRelPaths: [(order: Int, path: String)] = []
 
@@ -472,7 +445,6 @@ private final class NotesXMLParser: NSObject, XMLParserDelegate {
 /// Parser para archivos `.rels` (relaciones de Open XML).
 private final class RelsXMLParser: NSObject, XMLParserDelegate {
     struct Relationship {
-        let id: String
         let type: String
         let target: String
     }
@@ -493,32 +465,8 @@ private final class RelsXMLParser: NSObject, XMLParserDelegate {
 
         if localName == "Relationship" {
             if let type = attributes["Type"], let target = attributes["Target"] {
-                relationships.append(Relationship(id: attributes["Id"] ?? "", type: type, target: target))
+                relationships.append(Relationship(type: type, target: target))
             }
-        }
-    }
-}
-
-// MARK: - SlideIDListParser
-
-/// Lee los `r:id` de `<p:sldIdLst>` en `ppt/presentation.xml`, en el orden de la presentación.
-private final class SlideIDListParser: NSObject, XMLParserDelegate {
-    private var ids: [String] = []
-
-    static func parse(data: Data) -> [String] {
-        let parser = SlideIDListParser()
-        let xmlParser = XMLParser(data: data)
-        xmlParser.delegate = parser
-        xmlParser.parse()
-        return parser.ids
-    }
-
-    func parser(_ parser: XMLParser, didStartElement elementName: String,
-                namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
-        let localName = elementName.components(separatedBy: ":").last ?? elementName
-        guard localName == "sldId" else { return }
-        if let rid = attributes["r:id"] ?? attributes.first(where: { $0.key.hasSuffix(":id") })?.value {
-            ids.append(rid)
         }
     }
 }

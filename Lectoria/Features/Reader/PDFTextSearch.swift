@@ -26,13 +26,7 @@ enum PDFTextSearch {
     static let activeMatchColor = UIColor.systemOrange.withAlphaComponent(0.75)
 
     /// Busca `query` (sin distinguir mayúsculas ni acentos) en todo el documento.
-    /// - Parameter pageLabel: título de cada resultado a partir del índice de página.
-    ///   Por defecto "Página N" (o la etiqueta del PDF); las presentaciones usan "Diapositiva N".
-    static func search(
-        _ query: String,
-        in document: PDFDocument,
-        pageLabel: ((Int) -> String)? = nil
-    ) -> [PDFSearchMatch] {
+    static func search(_ query: String, in document: PDFDocument) -> [PDFSearchMatch] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
@@ -43,7 +37,7 @@ enum PDFTextSearch {
         for selection in selections.prefix(maxMatches) {
             guard let page = selection.pages.first else { continue }
             let pageIndex = document.index(for: page)
-            let pageTitle = pageLabel?(pageIndex) ?? "Página \(page.label ?? "\(pageIndex + 1)")"
+            let pageTitle = "Página \(page.label ?? "\(pageIndex + 1)")"
             matches.append(PDFSearchMatch(
                 selection: selection,
                 pageIndex: pageIndex,

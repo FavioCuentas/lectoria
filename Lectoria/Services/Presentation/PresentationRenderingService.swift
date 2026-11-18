@@ -27,7 +27,8 @@ final class PresentationRenderingService: PresentationPDFRendering {
     private let slideCount: (URL) async throws -> Int
 
     private(set) var attempted: Set<UUID> = []
-    private(set) var inFlight: Set<UUID> = []
+    /// Conversiones en curso: quien llegue mientras tanto (p. ej. abrir justo tras importar) espera.
+    private var inFlight: [UUID: Task<Void, Never>] = [:]
 
     init(
         directory: @escaping () -> URL? = RenderedPresentationStore.publicationsDirectory,
@@ -44,22 +45,30 @@ final class PresentationRenderingService: PresentationPDFRendering {
     func ensureRendered(localFileName: String, publicationID: UUID) async {
         guard RenderedPresentationStore.isConvertible(localFileName: localFileName),
               let directory = directory() else { return }
+        if let running = inFlight[publicationID] {
+            await running.value
+            return
+        }
         let destination = RenderedPresentationStore.renderedURL(forLocalFileName: localFileName, in: directory)
         guard RenderedPresentationStore.validDocument(at: destination) == nil,
-              !inFlight.contains(publicationID),
               !attempted.contains(publicationID) else { return }
 
-        inFlight.insert(publicationID)
         attempted.insert(publicationID)
-        defer { inFlight.remove(publicationID) }
-
         let source = directory.appendingPathComponent(localFileName)
-        do {
-            let expected = try await slideCount(source)
-            try await convert(source, expected, destination)
-            logger.info("Presentación convertida a PDF (\(expected) diapositivas)")
-        } catch {
-            logger.error("No se pudo convertir la presentación a PDF: \(String(describing: error))")
+        let slideCount = self.slideCount
+        let convert = self.convert
+        let task = Task { @MainActor in
+            do {
+                let expected = try await slideCount(source)
+                try await convert(source, expected, destination)
+                logger.info("Presentación convertida a PDF (\(expected) diapositivas)")
+            } catch {
+                logger.error("No se pudo convertir la presentación a PDF: \(String(describing: error))")
+            }
         }
+        inFlight[publicationID] = task
+        await task.value
+        inFlight[publicationID] = nil
     }
+
 }

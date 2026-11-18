@@ -15,24 +15,12 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     let onSelectionCleared: (() -> Void)?
     let onAddNoteRequest: ((String, Int) -> Void)?
     let onTranslateRequest: ((String) -> Void)?
-    /// Coincidencias de búsqueda a sombrear; la activa va en otro color.
-    var searchMatches: [PDFSearchMatch] = []
-    var activeSearchIndex: Int? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
     func makeUIView(context: Context) -> PDFView {
-        makeConfiguredView(coordinator: context.coordinator)
-    }
-
-    func updateUIView(_ pdfView: PDFView, context: Context) {
-        applyUpdates(to: pdfView, coordinator: context.coordinator)
-    }
-
-    /// Crea y configura el `PDFView` (separado de `makeUIView` para poder probarlo).
-    func makeConfiguredView(coordinator: Coordinator) -> PDFView {
         let pdfView = CustomPDFView()
         pdfView.autoScales = true
         pdfView.displayMode = .singlePage
@@ -51,7 +39,7 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
             }
         }
 
-        coordinator.attach(to: pdfView)
+        context.coordinator.attach(to: pdfView)
 
         if let page = pdfDocument.page(at: pageIndex) {
             pdfView.go(to: page)
@@ -60,22 +48,20 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
         return pdfView
     }
 
-    /// Aplica el estado de SwiftUI al `PDFView` (separado de `updateUIView` para poder probarlo).
-    func applyUpdates(to pdfView: PDFView, coordinator: Coordinator) {
+    func updateUIView(_ pdfView: PDFView, context: Context) {
         if pdfView.document != pdfDocument {
             pdfView.document = pdfDocument
         }
 
         // Actualizar la página solo si varió externamente para evitar ciclos infinitos
-        if !coordinator.isUpdatingFromPDFView,
+        if !context.coordinator.isUpdatingFromPDFView,
            let page = pdfDocument.page(at: pageIndex),
            pdfView.currentPage != page {
             pdfView.go(to: page)
         }
 
         // Renderizar o actualizar resaltados de la página activa
-        coordinator.renderAnnotations(on: pdfView)
-        coordinator.applySearchHighlights(searchMatches, activeIndex: activeSearchIndex, on: pdfView)
+        context.coordinator.renderAnnotations(on: pdfView)
     }
 
     // MARK: - Coordinator
@@ -84,21 +70,6 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     final class Coordinator: NSObject {
         var parent: PDFPresentationPreviewWrapper
         var isUpdatingFromPDFView = false
-        /// Última búsqueda sombreada, para no repetir el trabajo en cada actualización.
-        private var appliedSearchSignature: [UUID] = []
-        private var appliedActiveIndex: Int? = nil
-
-        func applySearchHighlights(_ matches: [PDFSearchMatch], activeIndex: Int?, on pdfView: PDFView) {
-            let signature = matches.map(\.id)
-            guard signature != appliedSearchSignature || activeIndex != appliedActiveIndex else { return }
-            appliedSearchSignature = signature
-            appliedActiveIndex = activeIndex
-            if matches.isEmpty {
-                PDFTextSearch.clearHighlights(on: pdfView)
-            } else {
-                PDFTextSearch.applyHighlights(matches, activeIndex: activeIndex, on: pdfView)
-            }
-        }
         nonisolated(unsafe) private var notificationObservers: [any NSObjectProtocol] = []
 
         init(_ parent: PDFPresentationPreviewWrapper) {
