@@ -73,8 +73,12 @@ struct PDFReaderView: View {
     
     // Búsqueda de texto
     @State private var searchQuery = ""
-    @State private var searchResults: [SearchResult] = []
+    @State private var searchMatches: [PDFSearchMatch] = []
     @State private var isSearching = false
+    /// Coincidencia activa (sombreada en naranja y mostrada en la barra "N de M").
+    @State private var activeMatchIndex: Int? = nil
+    /// Coincidencia a la que saltar cuando termine de cerrarse la hoja de búsqueda.
+    @State private var pendingSearchJump: Int? = nil
 
     // Preferencias del usuario (persistidas o inicializadas por defecto)
     @State private var isScrollMode = true
@@ -131,6 +135,25 @@ struct PDFReaderView: View {
                     .transition(.opacity)
             }
             
+            // Barra de navegación entre coincidencias de búsqueda
+            if let activeIndex = activeMatchIndex, !searchMatches.isEmpty, !showSearch {
+                VStack {
+                    PDFSearchNavigatorBar(
+                        query: searchQuery,
+                        activeIndex: activeIndex,
+                        total: searchMatches.count,
+                        theme: appTheme,
+                        onPrevious: { selectSearchMatch(at: (activeIndex - 1 + searchMatches.count) % searchMatches.count) },
+                        onNext: { selectSearchMatch(at: (activeIndex + 1) % searchMatches.count) },
+                        onShowList: { showSearch = true },
+                        onClose: { clearSearch() }
+                    )
+                    .padding(.top, showUI ? 64 : AppSpacing.md)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // Globo flotante de respuesta inline (Diccionario, Traducción, IA)
             if showInlineBubble {
                 inlineResponseBubble(theme: appTheme)
@@ -427,7 +450,14 @@ struct PDFReaderView: View {
         .sheet(isPresented: $showSettings) {
             settingsSheet(theme: theme)
         }
-        .sheet(isPresented: $showSearch) {
+        .sheet(isPresented: $showSearch, onDismiss: {
+            // Navegar solo cuando la hoja ya se cerró: durante la animación de cierre
+            // PDFKit (sobre todo en modo paginado) ignora `go(to:)`.
+            if let index = pendingSearchJump {
+                pendingSearchJump = nil
+                selectSearchMatch(at: index)
+            }
+        }) {
             searchSheet(theme: theme)
         }
         .translationTask(translationConfig) { session in
@@ -717,8 +747,7 @@ struct PDFReaderView: View {
                     
                     if !searchQuery.isEmpty {
                         Button {
-                            searchQuery = ""
-                            searchResults.removeAll()
+                            clearSearch()
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(AppColor.textSecondary(for: theme))
@@ -745,7 +774,7 @@ struct PDFReaderView: View {
                             .padding(.top, AppSpacing.xs)
                         Spacer()
                     }
-                } else if searchResults.isEmpty && !searchQuery.isEmpty {
+                } else if searchMatches.isEmpty && !searchQuery.isEmpty {
                     VStack {
                         Spacer()
                         Text("No se encontraron resultados.")
@@ -754,28 +783,38 @@ struct PDFReaderView: View {
                         Spacer()
                     }
                 } else {
-                    List(searchResults) { result in
-                        Button {
-                            if !result.locationData.isEmpty,
-                               let location = try? JSONDecoder().decode(PDFLocation.self, from: result.locationData) {
-                                targetLocation = location
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(searchSummary)
+                            .font(AppTypography.footnote.weight(.semibold))
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                            .padding(.horizontal, AppSpacing.lg)
+                            .padding(.vertical, AppSpacing.xs)
+
+                        List(Array(searchMatches.enumerated()), id: \.element.id) { index, match in
+                            Button {
+                                activeMatchIndex = index
+                                pendingSearchJump = index
                                 showSearch = false
+                            } label: {
+                                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                                    Text(match.pageTitle)
+                                        .font(AppTypography.footnote.weight(.semibold))
+                                        .foregroundStyle(AppColor.accent(for: theme))
+
+                                    Text(match.snippet)
+                                        .font(AppTypography.body)
+                                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                                        .lineLimit(2)
+                                }
                             }
-                        } label: {
-                            VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                                Text(result.chapterTitle ?? "Página")
-                                    .font(AppTypography.footnote.weight(.semibold))
-                                    .foregroundStyle(AppColor.accent(for: theme))
-                                
-                                Text(result.text)
-                                    .font(AppTypography.body)
-                                    .foregroundStyle(AppColor.textPrimary(for: theme))
-                                    .lineLimit(2)
-                            }
+                            .listRowBackground(
+                                index == activeMatchIndex
+                                    ? AppColor.accent(for: theme).opacity(0.12)
+                                    : AppColor.surface(for: theme)
+                            )
                         }
-                        .listRowBackground(AppColor.surface(for: theme))
+                        .scrollContentBackground(.hidden)
                     }
-                    .scrollContentBackground(.hidden)
                 }
             }
             .background(AppColor.background(for: theme))
@@ -1537,24 +1576,56 @@ struct PDFReaderView: View {
     // MARK: - Search Logic
 
     private func performSearch() {
-        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        
+        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let document = adapter.document else { return }
+
         isSearching = true
-        searchResults.removeAll()
-        
-        Task {
-            do {
-                let results = try await adapter.search(searchQuery)
-                await MainActor.run {
-                    self.searchResults = results
-                    self.isSearching = false
-                }
-            } catch {
-                await MainActor.run {
-                    self.isSearching = false
-                }
+        activeMatchIndex = nil
+        searchMatches.removeAll()
+
+        // Ceder un ciclo para que se pinte el indicador "Buscando..." antes de buscar.
+        Task { @MainActor in
+            await Task.yield()
+            let matches = PDFTextSearch.search(searchQuery, in: document)
+            searchMatches = matches
+            isSearching = false
+            if let pdfView = pdfViewReference {
+                PDFTextSearch.applyHighlights(matches, activeIndex: nil, on: pdfView)
             }
         }
+    }
+
+    /// Activa la coincidencia `index`: la sombrea en naranja y navega a su posición.
+    private func selectSearchMatch(at index: Int) {
+        guard searchMatches.indices.contains(index), let pdfView = pdfViewReference else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            activeMatchIndex = index
+        }
+        PDFTextSearch.applyHighlights(searchMatches, activeIndex: index, on: pdfView)
+        PDFTextSearch.go(to: searchMatches[index], on: pdfView)
+    }
+
+    /// Limpia la búsqueda, sus resultados y el sombreado del documento.
+    private func clearSearch() {
+        searchQuery = ""
+        searchMatches.removeAll()
+        pendingSearchJump = nil
+        withAnimation(.easeInOut(duration: 0.2)) {
+            activeMatchIndex = nil
+        }
+        if let pdfView = pdfViewReference {
+            PDFTextSearch.clearHighlights(on: pdfView)
+        }
+    }
+
+    /// Texto de resumen: "12 coincidencias en 5 páginas".
+    private var searchSummary: String {
+        let total = searchMatches.count
+        let pages = PDFTextSearch.pageCount(of: searchMatches)
+        let matchesText = total == 1 ? "1 coincidencia" : "\(total) coincidencias"
+        let pagesText = pages == 1 ? "1 página" : "\(pages) páginas"
+        let capped = total >= PDFTextSearch.maxMatches ? " (mostrando las primeras \(PDFTextSearch.maxMatches))" : ""
+        return "\(matchesText) en \(pagesText)\(capped)"
     }
 
     // MARK: - Helpers
