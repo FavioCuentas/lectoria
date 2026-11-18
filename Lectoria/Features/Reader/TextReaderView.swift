@@ -79,9 +79,13 @@ struct TextReaderView: View {
     @State private var pendingAIAction: String? = nil
     @State private var textToProcess = ""
 
-    init(record: PublicationRecord, initialLocation: TextLocation? = nil) {
+    /// Búsqueda con la que se abrió el lector desde la búsqueda global (se aplica una vez).
+    @State private var pendingInitialSearch: InitialSearch?
+
+    init(record: PublicationRecord, initialLocation: TextLocation? = nil, initialSearch: InitialSearch? = nil) {
         self.record = record
         self._initialLocation = State(initialValue: initialLocation)
+        self._pendingInitialSearch = State(initialValue: initialSearch)
     }
 
     // Control de visibilidad de bloques en pantalla
@@ -189,6 +193,7 @@ struct TextReaderView: View {
         .statusBarHidden(!showUI)
         .task {
             await loadText()
+            await applyInitialSearchIfNeeded()
         }
         .onChange(of: currentLocation) { _, newValue in
             if let newValue {
@@ -944,7 +949,9 @@ struct TextReaderView: View {
 
         do {
             // 1. Cargar el último progreso guardado de la base de datos
-            if let savedProgress = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id),
+            // Una ubicación pedida al abrir (nota, destacado) tiene prioridad sobre el progreso.
+            if self.initialLocation == nil,
+               let savedProgress = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id),
                let data = savedProgress.locatorJSON.data(using: .utf8),
                let decoded = try? JSONDecoder().decode(TextLocation.self, from: data) {
                 self.initialLocation = decoded
@@ -955,9 +962,7 @@ struct TextReaderView: View {
             try await openAdapter()
             
             // Registrar fecha de apertura
-            var updatedRecord = record
-            updatedRecord.lastOpenedAt = Date()
-            try? await dependencies.publicationRepository.save(updatedRecord)
+            await PublicationRecordUpdates.markOpened(record.id, repository: dependencies.publicationRepository)
 
             // 3. Obtener el índice (TOC)
             self.tocItems = (try? await getTableOfContents()) ?? []
@@ -1324,6 +1329,27 @@ struct TextReaderView: View {
     }
 
     // MARK: - Search Logic
+
+    /// Al abrir desde la búsqueda global: busca la consulta y salta al primer resultado en el
+    /// bloque del resultado o después (o al primero del documento si ya no está ahí).
+    private func applyInitialSearchIfNeeded() async {
+        guard let initial = pendingInitialSearch, !blocks.isEmpty else { return }
+        pendingInitialSearch = nil
+        searchQuery = initial.query
+        let results = (try? await searchAdapter(initial.query)) ?? []
+        searchResults = results
+        let block = initial.scope.flatMap(Int.init) ?? 0
+        let blockOf: (SearchResult) -> Int = { result in
+            (try? JSONDecoder().decode(TextLocation.self, from: result.locationData))?.blockIndex ?? 0
+        }
+        guard let index = InitialSearchResolver.firstIndex(in: results, atOrAfter: block, blockOf: blockOf),
+              let location = try? JSONDecoder().decode(TextLocation.self, from: results[index].locationData) else {
+            showSearch = true
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(300))
+        targetLocation = location
+    }
 
     private func performSearch() {
         guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }

@@ -54,9 +54,13 @@ struct PDFReaderView: View {
     @State private var inlineBubbleText = ""
     @State private var isLoadingInline = false
 
-    init(record: PublicationRecord, initialLocation: PDFLocation? = nil) {
+    /// Búsqueda con la que se abrió el lector desde la búsqueda global (se aplica una vez).
+    @State private var pendingInitialSearch: InitialSearch?
+
+    init(record: PublicationRecord, initialLocation: PDFLocation? = nil, initialSearch: InitialSearch? = nil) {
         self.record = record
         self._initialLocation = State(initialValue: initialLocation)
+        self._pendingInitialSearch = State(initialValue: initialSearch)
     }
 
     // Controles de interfaz de usuario
@@ -164,6 +168,9 @@ struct PDFReaderView: View {
         .statusBarHidden(!showUI)
         .sheet(isPresented: $showNoteEditor) {
             noteEditorSheet(theme: appTheme)
+        }
+        .onChange(of: pdfViewReference) { _, view in
+            if view != nil { applyInitialSearchIfNeeded() }
         }
         .task {
             await loadPDF()
@@ -837,7 +844,9 @@ struct PDFReaderView: View {
         
         do {
             // 1. Cargar el último progreso guardado de la base de datos
-            if let savedProgress = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id),
+            // Una ubicación pedida al abrir (nota, destacado) tiene prioridad sobre el progreso.
+            if self.initialLocation == nil,
+               let savedProgress = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id),
                let data = savedProgress.locatorJSON.data(using: .utf8),
                let decoded = try? JSONDecoder().decode(PDFLocation.self, from: data) {
                 self.initialLocation = decoded
@@ -848,9 +857,7 @@ struct PDFReaderView: View {
             try await adapter.open(publication: record)
             
             // Registrar fecha de apertura
-            var updatedRecord = record
-            updatedRecord.lastOpenedAt = Date()
-            try? await dependencies.publicationRepository.save(updatedRecord)
+            await PublicationRecordUpdates.markOpened(record.id, repository: dependencies.publicationRepository)
             
             // 3. Extraer el outline (TOC)
             self.tocItems = (try? await adapter.tableOfContents()) ?? []
@@ -1597,6 +1604,25 @@ struct PDFReaderView: View {
             isSearching = false
             if let pdfView = pdfViewReference {
                 PDFTextSearch.applyHighlights(matches, activeIndex: nil, on: pdfView)
+            }
+        }
+    }
+
+    /// Al abrir desde la búsqueda global: busca la consulta y salta a la primera coincidencia
+    /// de la página del resultado (o a la primera del documento si ahí ya no está).
+    private func applyInitialSearchIfNeeded() {
+        guard let initial = pendingInitialSearch, let document = adapter.document else { return }
+        pendingInitialSearch = nil
+        searchQuery = initial.query
+        Task { @MainActor in
+            // Dejar que PDFKit termine de maquetar antes de navegar.
+            try? await Task.sleep(for: .milliseconds(300))
+            let matches = PDFTextSearch.search(initial.query, in: document)
+            searchMatches = matches
+            if let index = InitialSearchResolver.firstMatchIndex(in: matches, scope: initial.scope, scopeOf: { "\($0.pageIndex)" }) {
+                selectSearchMatch(at: index)
+            } else {
+                showSearch = true
             }
         }
     }

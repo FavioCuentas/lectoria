@@ -203,6 +203,39 @@ struct PresentationRenderingTests {
         #expect(PresentationOpenRoute.decide(localFileName: "a.pptx", directory: nil) == .presentation)
     }
 
+    // MARK: - Registro de la presentación al abrirla como PDF
+
+    @Test func testMarkOpenedKeepsStoredFileName() async throws {
+        let repo = SwiftDataPublicationRepository(container: ModelContainerFactory.create(isStoredInMemoryOnly: true))
+        let deck = PublicationRecord.newImport(title: "Deck", publicationType: .pptx, localFileName: "a.pptx",
+                                               mimeType: "x", fileSize: 1, sha256: UUID().uuidString)
+        try await repo.save(deck)
+        // El lector de PDF trabaja con una copia que apunta al PDF convertido.
+        await PublicationRecordUpdates.markOpened(deck.id, repository: repo)
+        let stored = try #require(try await repo.fetch(id: deck.id))
+        #expect(stored.localFileName == "a.pptx")
+        #expect(stored.lastOpenedAt != nil)
+    }
+
+    @Test func testRepairRestoresPresentationFileNames() async throws {
+        let repo = SwiftDataPublicationRepository(container: ModelContainerFactory.create(isStoredInMemoryOnly: true))
+        var broken = PublicationRecord.newImport(title: "Deck", publicationType: .pptx, localFileName: "a.pptx",
+                                                 mimeType: "x", fileSize: 1, sha256: UUID().uuidString)
+        broken.localFileName = "a.pptx.rendered.pdf"
+        broken.indexingStatus = .failed
+        let pdf = PublicationRecord.newImport(title: "Doc", publicationType: .pdf, localFileName: "b.rendered.pdf",
+                                              mimeType: "x", fileSize: 1, sha256: UUID().uuidString)
+        try await repo.save(broken)
+        try await repo.save(pdf)
+
+        await PublicationRecordUpdates.repairPresentationFileNames(repository: repo)
+
+        let fixed = try #require(try await repo.fetch(id: broken.id))
+        #expect(fixed.localFileName == "a.pptx")
+        #expect(fixed.indexingStatus == .pending)
+        #expect(try await repo.fetch(id: pdf.id)?.localFileName == "b.rendered.pdf")
+    }
+
     @Test func testIsConvertibleOnlyPPTX() {
         #expect(RenderedPresentationStore.isConvertible(localFileName: "a.pptx"))
         #expect(RenderedPresentationStore.isConvertible(localFileName: "A.PPTX"))

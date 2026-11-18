@@ -28,6 +28,10 @@ public final class AppDependencies {
     public let importService: ImportService
     /// Convierte presentaciones PPTX a PDF buscable (tras importar o al abrir).
     let presentationRenderingService: PresentationRenderingService
+    /// Índice de contenido de la búsqueda global (`nil` si no se pudo abrir la base).
+    let searchIndexStore: SearchIndexStore?
+    /// Mantiene el índice de la búsqueda global al día.
+    let searchIndexingService: SearchIndexingService
     public let authService: any AuthService
     public let subscriptionService: any SubscriptionService
     public let entitlementService: any EntitlementService
@@ -110,6 +114,10 @@ public final class AppDependencies {
             anonKey: env.supabaseAnonKey
         )
 
+        let indexStore = try? SearchIndexStore(url: SearchIndexStore.defaultURL())
+        self.searchIndexStore = indexStore
+        let indexingService = SearchIndexingService(store: indexStore, publications: pubRepo)
+        self.searchIndexingService = indexingService
         let renderingService = PresentationRenderingService()
         self.presentationRenderingService = renderingService
         self.importService = ImportService(
@@ -117,7 +125,8 @@ public final class AppDependencies {
             fileStorageService: fileStorage,
             entitlementService: entitlement,
             analyticsService: self.analyticsService,
-            presentationRenderer: renderingService
+            presentationRenderer: renderingService,
+            searchIndexer: indexingService
         )
         
         self.aiService = aiService ?? LocalDeviceAIService()

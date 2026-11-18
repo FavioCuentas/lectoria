@@ -80,6 +80,15 @@ struct EPUBReaderView: View {
     @State private var fontSize: Double = 1.0
     @State private var isScrollMode = false
 
+    /// Búsqueda con la que se abrió el lector desde la búsqueda global (se aplica una vez).
+    @State private var pendingInitialSearch: InitialSearch?
+
+    init(record: PublicationRecord, initialLocation: EPUBLocation? = nil, initialSearch: InitialSearch? = nil) {
+        self.record = record
+        self._initialLocation = State(initialValue: initialLocation)
+        self._pendingInitialSearch = State(initialValue: initialSearch)
+    }
+
     var body: some View {
         let appTheme = themeManager.currentTheme
 
@@ -156,6 +165,9 @@ struct EPUBReaderView: View {
         .task {
             await loadBook()
             await loadHighlights()
+        }
+        .onChange(of: navigatorReference) { _, navigator in
+            if navigator != nil { applyInitialSearchIfNeeded() }
         }
         .onChange(of: currentLocation) { _, newValue in
             if let newValue {
@@ -552,6 +564,36 @@ struct EPUBReaderView: View {
         }
     }
 
+    /// Al abrir desde la búsqueda global: busca la consulta y salta a la primera coincidencia
+    /// del capítulo del resultado (o a la primera del libro si ahí ya no está).
+    private func applyInitialSearchIfNeeded() {
+        guard let initial = pendingInitialSearch, let publication = adapter.publication else { return }
+        pendingInitialSearch = nil
+        searchQuery = initial.query
+        isSearching = true
+        let scope = initial.scope.map(InitialSearchKey.normalizedHref)
+        searchTask?.cancel()
+        searchTask = Task { @MainActor in
+            // Dejar que el navegador cargue el primer capítulo antes de sombrear y saltar.
+            try? await Task.sleep(for: .milliseconds(400))
+            let matches = await EPUBTextSearch.search(initial.query, in: publication)
+            guard !Task.isCancelled else { return }
+            searchMatches = matches
+            isSearching = false
+            let index = InitialSearchResolver.firstMatchIndex(in: matches, scope: scope, scopeOf: { match in
+                let key = InitialSearchKey.normalizedHref(match.chapterKey)
+                // El índice puede guardar la ruta completa y Readium una relativa, o al revés.
+                if let scope, key != scope, key.hasSuffix("/" + scope) || scope.hasSuffix("/" + key) { return scope }
+                return key
+            })
+            if let index {
+                selectSearchMatch(at: index)
+            } else {
+                showSearch = true
+            }
+        }
+    }
+
     /// Activa la coincidencia `index`: la sombrea en naranja y navega a su posición.
     private func selectSearchMatch(at index: Int) {
         guard searchMatches.indices.contains(index), let navigator = navigatorReference else { return }
@@ -730,7 +772,10 @@ struct EPUBReaderView: View {
         
         do {
             // 1. Cargar el último progreso guardado de base de datos
-            if let savedProgress = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id),
+            // Una ubicación pedida al abrir (nota, destacado) tiene prioridad sobre el progreso.
+            if let requested = self.initialLocation {
+                self.currentLocation = requested
+            } else if let savedProgress = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id),
                let data = savedProgress.locatorJSON.data(using: .utf8),
                let decoded = try? JSONDecoder().decode(EPUBLocation.self, from: data) {
                 self.initialLocation = decoded
@@ -741,9 +786,7 @@ struct EPUBReaderView: View {
             try await adapter.open(publication: record)
             
             // Registrar fecha de apertura
-            var updatedRecord = record
-            updatedRecord.lastOpenedAt = Date()
-            try? await dependencies.publicationRepository.save(updatedRecord)
+            await PublicationRecordUpdates.markOpened(record.id, repository: dependencies.publicationRepository)
             
             // 3. Extraer la Tabla de Contenidos
             self.tocItems = (try? await adapter.tableOfContents()) ?? []

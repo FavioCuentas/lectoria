@@ -74,11 +74,12 @@ final class TextReaderAdapter: PublicationEngine {
         
         return await Task.detached(priority: .userInitiated) { [currentBlocks] in
             var results: [SearchResult] = []
-            let lowerQuery = query.lowercased()
+            let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
             
             for block in currentBlocks {
                 let text = block.rawText
-                if text.lowercased().contains(lowerQuery) {
+                // Sin distinguir mayúsculas ni acentos, como el índice de la búsqueda global.
+                if !trimmedQuery.isEmpty, text.range(of: trimmedQuery, options: [.caseInsensitive, .diacriticInsensitive]) != nil {
                     let loc = TextLocation(
                         blockIndex: block.index,
                         characterOffset: 0,

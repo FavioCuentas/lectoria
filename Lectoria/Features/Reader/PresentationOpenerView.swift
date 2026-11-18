@@ -12,11 +12,13 @@ struct PresentationOpenerView: View {
 
     let record: PublicationRecord
     let initialPDFLocation: PDFLocation?
+    let initialSearch: InitialSearch?
     @State private var route: PresentationOpenRoute
 
-    init(record: PublicationRecord, initialPDFLocation: PDFLocation? = nil) {
+    init(record: PublicationRecord, initialPDFLocation: PDFLocation? = nil, initialSearch: InitialSearch? = nil) {
         self.record = record
         self.initialPDFLocation = initialPDFLocation
+        self.initialSearch = initialSearch
         _route = State(initialValue: PresentationOpenRoute.decide(
             localFileName: record.localFileName,
             directory: RenderedPresentationStore.publicationsDirectory()
@@ -27,7 +29,7 @@ struct PresentationOpenerView: View {
         switch route {
         case .pdf(let pdfFileName):
             // Mismo registro (id, título, notas, progreso), apuntando al PDF convertido.
-            PDFReaderView(record: pdfRecord(pdfFileName), initialLocation: initialPDFLocation)
+            PDFReaderView(record: pdfRecord(pdfFileName), initialLocation: initialPDFLocation, initialSearch: initialSearch)
         case .presentation:
             PresentationReaderView(record: record)
         case .convert:

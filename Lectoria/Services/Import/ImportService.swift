@@ -39,6 +39,7 @@ public final class ImportService: Sendable {
     private let entitlementService: (any EntitlementService)?
     private let analyticsService: (any AnalyticsService)?
     private let presentationRenderer: (any PresentationPDFRendering)?
+    private let searchIndexer: (any SearchIndexing)?
 
     public init(
         publicationRepository: any PublicationRepository,
@@ -47,7 +48,8 @@ public final class ImportService: Sendable {
         coverGenerator: CoverGenerator = CoverGenerator(),
         entitlementService: (any EntitlementService)? = nil,
         analyticsService: (any AnalyticsService)? = nil,
-        presentationRenderer: (any PresentationPDFRendering)? = nil
+        presentationRenderer: (any PresentationPDFRendering)? = nil,
+        searchIndexer: (any SearchIndexing)? = nil
     ) {
         self.publicationRepository = publicationRepository
         self.fileStorageService = fileStorageService
@@ -56,6 +58,7 @@ public final class ImportService: Sendable {
         self.entitlementService = entitlementService
         self.analyticsService = analyticsService
         self.presentationRenderer = presentationRenderer
+        self.searchIndexer = searchIndexer
     }
 
     /// Importa un archivo a partir de una URL local (puede ser un recurso de seguridad externa de iOS).
@@ -183,6 +186,8 @@ public final class ImportService: Sendable {
             }
         }
 
+        requestIndexing(of: record.id)
+
         analyticsService?.track(.documentImported, properties: [
             "format": publicationType.rawValue,
             "file_size_bucket": PropertySanitizer.bucketFileSize(fileSize)
@@ -265,11 +270,21 @@ public final class ImportService: Sendable {
 
         try await publicationRepository.save(record)
 
+        requestIndexing(of: record.id)
+
         analyticsService?.track(.documentImported, properties: [
             "format": "pasted_text",
             "file_size_bucket": PropertySanitizer.bucketFileSize(fileSize)
         ])
 
         return record
+    }
+
+    /// Indexa el contenido para la búsqueda global en segundo plano, sin demorar la importación.
+    private func requestIndexing(of publicationID: UUID) {
+        guard let searchIndexer else { return }
+        Task { @MainActor in
+            await searchIndexer.index(publicationID: publicationID)
+        }
     }
 }

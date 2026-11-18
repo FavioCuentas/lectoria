@@ -130,4 +130,23 @@ struct ImportServiceTests {
 
         #expect(spy.requested.isEmpty)
     }
+
+    @MainActor final class IndexingSpy: SearchIndexing {
+        var requested: [UUID] = []
+        func index(publicationID: UUID) async { requested.append(publicationID) }
+    }
+
+    @Test("Importing any document requests search indexing")
+    func testImportRequestsIndexing() async throws {
+        let spy = IndexingSpy()
+        let service = ImportService(publicationRepository: pubRepo, searchIndexer: spy)
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("indexar-\(UUID().uuidString).txt")
+        try "Texto para indexar \(UUID())".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let record = try await service.importPublication(from: url)
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(spy.requested == [record.id])
+    }
 }
