@@ -19,6 +19,7 @@ struct ProfileView: View {
     @State private var showErrorAlert = false
     @State private var showPaywall = false
     @State private var showMyDevices = false
+    @State private var showStats = false
     @State private var showAuthMainView = false
     @State private var errorMessage: String? = nil
 
@@ -167,7 +168,9 @@ struct ProfileView: View {
                     SettingsRow(
                         icon: "chart.bar",
                         title: String(localized: "Estadísticas", comment: "Profile: statistics")
-                    ) {}
+                    ) {
+                        showStats = true
+                    }
 
                     Divider()
 
@@ -257,6 +260,9 @@ struct ProfileView: View {
             if let errorMessage {
                 Text(errorMessage)
             }
+        }
+        .navigationDestination(isPresented: $showStats) {
+            StatsView()
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
