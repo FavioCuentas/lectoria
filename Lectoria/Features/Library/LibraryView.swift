@@ -87,10 +87,10 @@ struct LibraryView: View {
             }
         }
         .navigationDestination(item: $contentTarget) { target in
-            readerView(for: target.publication)
+            readerView(for: target.publication, search: InitialSearch(query: target.query, scope: target.scope))
         }
         .navigationDestination(item: $annotationTarget) { target in
-            readerView(for: target.publication)
+            readerView(for: target.publication, anchor: target.anchor)
         }
         .sheet(isPresented: $showActiveSelector) {
             ActiveDocumentSelectorView(publications: publicationModels.map { $0.toDomain() }) {}
@@ -280,17 +280,20 @@ struct LibraryView: View {
 
     // MARK: - Búsqueda global
 
+    /// Abre el lector adecuado, con búsqueda inicial (resultado de contenido) o en la
+    /// ubicación guardada de una nota o destacado (`anchor`).
     @ViewBuilder
-    private func readerView(for record: PublicationRecord) -> some View {
+    private func readerView(for record: PublicationRecord, search: InitialSearch? = nil, anchor: String? = nil) -> some View {
+        let data = anchor?.data(using: .utf8)
         switch record.publicationType {
         case .pdf:
-            PDFReaderView(record: record)
+            PDFReaderView(record: record, initialLocation: data.flatMap { try? JSONDecoder().decode(PDFLocation.self, from: $0) }, initialSearch: search)
         case .epub:
-            EPUBReaderView(record: record)
+            EPUBReaderView(record: record, initialLocation: data.flatMap { try? JSONDecoder().decode(EPUBLocation.self, from: $0) }, initialSearch: search)
         case .txt, .markdown, .pastedText:
-            TextReaderView(record: record)
+            TextReaderView(record: record, initialLocation: data.flatMap { try? JSONDecoder().decode(TextLocation.self, from: $0) }, initialSearch: search)
         case .pptx:
-            PresentationOpenerView(record: record)
+            PresentationOpenerView(record: record, initialPDFLocation: data.flatMap { try? JSONDecoder().decode(PDFLocation.self, from: $0) }, initialSearch: search)
         }
     }
 
