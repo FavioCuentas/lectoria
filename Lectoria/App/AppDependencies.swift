@@ -26,6 +26,8 @@ public final class AppDependencies {
     // Servicios
     public let fileStorageService: FileStorageService
     public let importService: ImportService
+    /// Convierte presentaciones PPTX a PDF buscable (tras importar o al abrir).
+    let presentationRenderingService: PresentationRenderingService
     public let authService: any AuthService
     public let subscriptionService: any SubscriptionService
     public let entitlementService: any EntitlementService
@@ -108,11 +110,14 @@ public final class AppDependencies {
             anonKey: env.supabaseAnonKey
         )
 
+        let renderingService = PresentationRenderingService()
+        self.presentationRenderingService = renderingService
         self.importService = ImportService(
             publicationRepository: pubRepo,
             fileStorageService: fileStorage,
             entitlementService: entitlement,
-            analyticsService: self.analyticsService
+            analyticsService: self.analyticsService,
+            presentationRenderer: renderingService
         )
         
         self.aiService = aiService ?? LocalDeviceAIService()

@@ -22,13 +22,22 @@ final class PPTXParser: Sendable {
     /// - Returns: Array de `PPTXSlide` en orden.
     static func parse(url: URL) async throws -> [PPTXSlide] {
         return try await Task.detached(priority: .userInitiated) {
-            try Self.parseSync(url: url)
+            try Self.parseSync(url: url, includeEmptyAndHidden: false)
+        }.value
+    }
+
+    /// Diapositivas que se muestran al presentar, en orden: incluye las que no tienen texto
+    /// (por ejemplo, solo imágenes) y omite las ocultas (`show="0"`), igual que QuickLook.
+    /// El índice en este arreglo coincide con la página del PDF convertido.
+    static func visibleSlides(url: URL) async throws -> [PPTXSlide] {
+        try await Task.detached(priority: .userInitiated) {
+            try Self.parseSync(url: url, includeEmptyAndHidden: true).filter { !$0.isHidden }
         }.value
     }
 
     // MARK: - Implementation
 
-    private static func parseSync(url: URL) throws -> [PPTXSlide] {
+    private static func parseSync(url: URL, includeEmptyAndHidden: Bool) throws -> [PPTXSlide] {
         // 1. Crear directorio temporal para descomprimir
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("pptx_\(UUID().uuidString)", isDirectory: true)
@@ -70,10 +79,11 @@ final class PPTXParser: Sendable {
                 slideNumber: index + 1,
                 title: slideContent.title,
                 bodyTexts: slideContent.bodyTexts,
-                speakerNotes: speakerNotes
+                speakerNotes: speakerNotes,
+                isHidden: slideContent.isHidden
             )
 
-            if slide.hasContent || speakerNotes != nil {
+            if includeEmptyAndHidden || slide.hasContent || speakerNotes != nil {
                 slides.append(slide)
             }
         }
@@ -295,7 +305,10 @@ private final class SlideXMLParser: NSObject, XMLParserDelegate {
     struct Result {
         var title: String?
         var bodyTexts: [String]
+        var isHidden = false
     }
+
+    private var isHidden = false
 
     private var currentText = ""
     private var allTexts: [String] = []
@@ -323,14 +336,17 @@ private final class SlideXMLParser: NSObject, XMLParserDelegate {
             body = Array(allClean.dropFirst())
         }
 
-        return Result(title: title, bodyTexts: body)
+        return Result(title: title, bodyTexts: body, isHidden: parser.isHidden)
     }
 
     func parser(_ parser: XMLParser, didStartElement elementName: String,
                 namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
         let localName = elementName.components(separatedBy: ":").last ?? elementName
 
-        if localName == "p" {
+        if localName == "sld" {
+            // <p:sld show="0"> marca una diapositiva oculta.
+            isHidden = attributes["show"] == "0"
+        } else if localName == "p" {
             // Inicio de párrafo (<a:p>)
             insideParagraph = true
             currentParagraph = ""

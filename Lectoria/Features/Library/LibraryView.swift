@@ -68,7 +68,7 @@ struct LibraryView: View {
             case .txt, .markdown, .pastedText:
                 TextReaderView(record: record)
             case .pptx:
-                PresentationReaderView(record: record)
+                PresentationOpenerView(record: record)
             }
         }
         .sheet(isPresented: $showActiveSelector) {

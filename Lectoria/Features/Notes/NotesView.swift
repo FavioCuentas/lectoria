@@ -118,7 +118,7 @@ struct NotesView: View {
                 case .txt, .markdown, .pastedText:
                     TextReaderView(record: pub, initialLocation: initialTextLocation)
                 case .pptx:
-                    PresentationReaderView(record: pub)
+                    PresentationOpenerView(record: pub, initialPDFLocation: initialPDFLocation)
                 }
             }
             .task {
@@ -426,6 +426,10 @@ struct NotesView: View {
                 self.initialTextLocation = decoded
                 self.selectedPublication = pub
             }
+        case .pptx:
+            // Las presentaciones se leen como PDF convertido: sus notas guardan posición de PDF.
+            self.initialPDFLocation = try? JSONDecoder().decode(PDFLocation.self, from: anchorData)
+            self.selectedPublication = pub
         default:
             self.selectedPublication = pub
         }

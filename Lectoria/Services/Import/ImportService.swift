@@ -38,6 +38,7 @@ public final class ImportService: Sendable {
     private let coverGenerator: CoverGenerator
     private let entitlementService: (any EntitlementService)?
     private let analyticsService: (any AnalyticsService)?
+    private let presentationRenderer: (any PresentationPDFRendering)?
 
     public init(
         publicationRepository: any PublicationRepository,
@@ -45,7 +46,8 @@ public final class ImportService: Sendable {
         metadataExtractor: DocumentMetadataExtractor = DocumentMetadataExtractor(),
         coverGenerator: CoverGenerator = CoverGenerator(),
         entitlementService: (any EntitlementService)? = nil,
-        analyticsService: (any AnalyticsService)? = nil
+        analyticsService: (any AnalyticsService)? = nil,
+        presentationRenderer: (any PresentationPDFRendering)? = nil
     ) {
         self.publicationRepository = publicationRepository
         self.fileStorageService = fileStorageService
@@ -53,6 +55,7 @@ public final class ImportService: Sendable {
         self.coverGenerator = coverGenerator
         self.entitlementService = entitlementService
         self.analyticsService = analyticsService
+        self.presentationRenderer = presentationRenderer
     }
 
     /// Importa un archivo a partir de una URL local (puede ser un recurso de seguridad externa de iOS).
@@ -171,6 +174,14 @@ public final class ImportService: Sendable {
         record.coverPath = coverPath
 
         try await publicationRepository.save(record)
+
+        // Convertir la presentación a PDF buscable en segundo plano, sin demorar la importación.
+        if let presentationRenderer, RenderedPresentationStore.isConvertible(localFileName: localFileName) {
+            let publicationID = record.id
+            Task { @MainActor in
+                await presentationRenderer.ensureRendered(localFileName: localFileName, publicationID: publicationID)
+            }
+        }
 
         analyticsService?.track(.documentImported, properties: [
             "format": publicationType.rawValue,
