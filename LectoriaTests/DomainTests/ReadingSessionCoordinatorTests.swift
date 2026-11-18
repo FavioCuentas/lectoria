@@ -300,4 +300,26 @@ struct ReadingSessionCoordinatorTests {
         #expect(saved.startPercentage == 0)
         #expect(saved.endPercentage == 0)
     }
+
+    /// El proveedor captura el estado de la vista (que a su vez retiene al coordinador):
+    /// al terminar la sesión debe soltarse para no filtrar el lector entero.
+    @Test
+    func testEndSessionReleasesProgressProvider() async throws {
+        final class Box { var value = 0.5 }
+        var box: Box? = Box()
+        weak var weakBox = box
+        let coordinator = ReadingSessionCoordinator(
+            publicationID: UUID(),
+            format: "pdf",
+            analyticsService: MockAnalyticsService(),
+            readingSessionRepository: MockReadingSessionRepository(),
+            progressProvider: { [box] in box?.value }
+        )
+        box = nil
+        coordinator.startSession()
+        #expect(weakBox != nil)
+        coordinator.endSession()
+        #expect(weakBox == nil)
+        withExtendedLifetime(coordinator) {}
+    }
 }

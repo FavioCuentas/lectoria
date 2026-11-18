@@ -23,7 +23,8 @@ public final class ReadingSessionCoordinator {
     private let readingSessionRepository: (any ReadingSessionRepository)?
     private let nowProvider: () -> ContinuousClock.Instant
     /// Progreso actual del documento (0.0 a 1.0), si el lector lo conoce.
-    private let progressProvider: (@MainActor () -> Double?)?
+    /// Se suelta en `endSession()`: captura el estado de la vista, que retiene al coordinador.
+    private var progressProvider: (@MainActor () -> Double?)?
 
     // Estado interno
     private var startedAt: Date?
@@ -125,6 +126,9 @@ public final class ReadingSessionCoordinator {
                 try? await repo.save(sessionRecord)
             }
         }
+
+        // Romper el ciclo vista → coordinador → proveedor → vista.
+        progressProvider = nil
 
         // 2. Despachar evento a telemetría (Zero PII: solo duration_seconds y format)
         analyticsService.track(.readingSessionEnded, properties: [
