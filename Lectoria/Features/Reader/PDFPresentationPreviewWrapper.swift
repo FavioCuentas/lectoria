@@ -24,6 +24,15 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> PDFView {
+        makeConfiguredView(coordinator: context.coordinator)
+    }
+
+    func updateUIView(_ pdfView: PDFView, context: Context) {
+        applyUpdates(to: pdfView, coordinator: context.coordinator)
+    }
+
+    /// Crea y configura el `PDFView` (separado de `makeUIView` para poder probarlo).
+    func makeConfiguredView(coordinator: Coordinator) -> PDFView {
         let pdfView = CustomPDFView()
         pdfView.autoScales = true
         pdfView.displayMode = .singlePage
@@ -42,7 +51,7 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
             }
         }
 
-        context.coordinator.attach(to: pdfView)
+        coordinator.attach(to: pdfView)
 
         if let page = pdfDocument.page(at: pageIndex) {
             pdfView.go(to: page)
@@ -51,21 +60,22 @@ struct PDFPresentationPreviewWrapper: UIViewRepresentable {
         return pdfView
     }
 
-    func updateUIView(_ pdfView: PDFView, context: Context) {
+    /// Aplica el estado de SwiftUI al `PDFView` (separado de `updateUIView` para poder probarlo).
+    func applyUpdates(to pdfView: PDFView, coordinator: Coordinator) {
         if pdfView.document != pdfDocument {
             pdfView.document = pdfDocument
         }
 
         // Actualizar la página solo si varió externamente para evitar ciclos infinitos
-        if !context.coordinator.isUpdatingFromPDFView,
+        if !coordinator.isUpdatingFromPDFView,
            let page = pdfDocument.page(at: pageIndex),
            pdfView.currentPage != page {
             pdfView.go(to: page)
         }
 
         // Renderizar o actualizar resaltados de la página activa
-        context.coordinator.renderAnnotations(on: pdfView)
-        context.coordinator.applySearchHighlights(searchMatches, activeIndex: activeSearchIndex, on: pdfView)
+        coordinator.renderAnnotations(on: pdfView)
+        coordinator.applySearchHighlights(searchMatches, activeIndex: activeSearchIndex, on: pdfView)
     }
 
     // MARK: - Coordinator

@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import PDFKit
 import UIKit
+import SwiftUI
 @testable import Lectoria
 
 @MainActor
@@ -66,6 +67,15 @@ struct PresentationRenderingTests {
         let (pptx, _) = try samplePPTX()
         let slides = try await PPTXParser.visibleSlides(url: pptx)
         #expect(slides.map(\.title) == ["Análisis del presupuesto", "Conclusiones finales"])
+    }
+
+    /// Notas enlazadas por relación (no por número de archivo) y orden según `sldIdLst`:
+    /// Alfa (con nota), Beta (sin nota), Gamma (con nota en notesSlide2), presentadas como Gamma, Alfa, Beta.
+    @Test func testVisibleSlidesFollowsPresentationOrderAndNotesRelationships() async throws {
+        let source = try #require(Bundle(for: FixtureBundleToken.self).url(forResource: "notes-reordered", withExtension: "pptx"))
+        let slides = try await PPTXParser.visibleSlides(url: source)
+        #expect(slides.map(\.title) == ["Gamma", "Alfa", "Beta"])
+        #expect(slides.map(\.speakerNotes) == ["nota de Gamma", "nota de Alfa", nil])
     }
 
     @Test func testConvertWritesOnePagePerSlideWithSearchableText() async throws {
@@ -180,6 +190,37 @@ struct PresentationRenderingTests {
         #expect(PresentationProgress.percentage(slideIndex: 4, totalSlides: 5) == 1)
         #expect(PresentationProgress.percentage(slideIndex: 2, totalSlides: 5) == 0.5)
         #expect(PresentationProgress.percentage(slideIndex: 9, totalSlides: 5) == 1)
+    }
+
+    /// Reanudar en la diapositiva guardada: el primer aviso de cambio de página de PDFKit
+    /// (al maquetar) no debe devolver el índice a 0 y pisar el progreso.
+    @Test func testWrapperKeepsResumedPageAfterLayout() async throws {
+        let document = try #require(PDFDocument(data: Self.makePDF(pages: ["1", "2", "3", "4", "5"])))
+        final class Box { var index = 3 }
+        let box = Box()
+        let wrapper = PDFPresentationPreviewWrapper(
+            pdfDocument: document,
+            pageIndex: Binding(get: { box.index }, set: { box.index = $0 }),
+            annotations: [],
+            onTextSelected: nil, onSelectionCleared: nil, onAddNoteRequest: nil, onTranslateRequest: nil
+        )
+        let coordinator = wrapper.makeCoordinator()
+        let pdfView = wrapper.makeConfiguredView(coordinator: coordinator)
+
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
+        pdfView.frame = window.bounds
+        window.addSubview(pdfView)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(600))
+        wrapper.applyUpdates(to: pdfView, coordinator: coordinator)
+        try await Task.sleep(for: .milliseconds(300))
+
+        #expect(box.index == 3)
+        #expect(pdfView.currentPage.map { document.index(for: $0) } == 3)
     }
 
     @Test func testIsConvertibleOnlyPPTX() {
