@@ -1,6 +1,7 @@
 import SwiftUI
 import QuickLook
 import PDFKit
+import Translation
 
 // MARK: - PresentationReaderView
 
@@ -55,6 +56,8 @@ struct PresentationReaderView: View {
     @State private var showConsent = false
     @State private var pendingAIAction: String? = nil
     @State private var lastAIAction = ""
+    @State private var translationConfig: TranslationSession.Configuration?
+    @State private var inlineTranslationText = ""
     @State private var showInlineBubble = false
     @State private var inlineBubbleTitle = ""
     @State private var inlineBubbleText = ""
@@ -789,6 +792,22 @@ struct PresentationReaderView: View {
                 )
             }
         }
+        .translationTask(translationConfig) { session in
+            let text = inlineTranslationText
+            guard !text.isEmpty else { return }
+            do {
+                let translated = try await LocalTranslation.translate(text, using: .init(session: session))
+                withAnimation(.spring(response: 0.3)) {
+                    inlineBubbleText = translated
+                    isLoadingInline = false
+                }
+            } catch {
+                withAnimation(.spring(response: 0.3)) {
+                    inlineBubbleText = LocalTranslation.errorMessage(error)
+                    isLoadingInline = false
+                }
+            }
+        }
         .sheet(isPresented: $showTranslationSheet) {
             if let textToTranslate {
                 TranslationSheetView(originalText: textToTranslate)
@@ -1009,7 +1028,7 @@ struct PresentationReaderView: View {
                     .padding(.vertical, AppSpacing.sm)
                 } else {
                     ScrollView {
-                        Text(inlineBubbleText)
+                        Text(AttributedString.inlineMarkdown(inlineBubbleText))
                             .font(AppTypography.body)
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                             .textSelection(.enabled)
@@ -1142,6 +1161,20 @@ struct PresentationReaderView: View {
 
     private func triggerAIAction(_ actionName: String) {
         Task {
+            // La traducción local es una función Premium con su propio permiso
+            // y no consume el cupo de IA ni requiere consentimiento de IA generativa.
+            if actionName.hasPrefix("translate_") {
+                let access = await dependencies.entitlementService.canAccess(.useLocalTranslation)
+                guard access == .allowed else {
+                    await MainActor.run { self.showPaywall = true }
+                    return
+                }
+                await MainActor.run {
+                    executeInlineAI(action: actionName)
+                }
+                return
+            }
+
             let canPerform = await dependencies.entitlementService.canPerformAction(.performAIAction)
             guard canPerform else {
                 await MainActor.run { self.showPaywall = true }
@@ -1184,22 +1217,32 @@ struct PresentationReaderView: View {
             showInlineBubble = true
         }
 
+        // Traducción local real con el framework Translation: se dispara vía .translationTask,
+        // que debe estar vinculado a la vista (puede presentar la descarga del idioma).
+        if action.hasPrefix("translate_") {
+            let langCode = String(action.dropFirst("translate_".count))
+            inlineTranslationText = textToProcess
+            let target = LocalTranslation.targetLanguage(for: langCode)
+            if var config = translationConfig, config.target == target {
+                config.invalidate()
+                translationConfig = config
+            } else {
+                translationConfig = TranslationSession.Configuration(source: nil, target: target)
+            }
+            return
+        }
+
         Task {
             let token = dependencies.authService.sessionToken
             do {
                 let result: String
-                if action.hasPrefix("translate_") {
-                    let langCode = String(action.dropFirst("translate_".count))
-                    result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: langCode, sessionToken: token)
-                } else {
-                    switch action {
-                    case "define": result = try await dependencies.aiService.explain(text: "Define el término: \(textToProcess)", sessionToken: token)
-                    case "explain": result = try await dependencies.aiService.explain(text: textToProcess, sessionToken: token)
-                    case "simplify": result = try await dependencies.aiService.simplify(text: textToProcess, sessionToken: token)
-                    case "summarize": result = try await dependencies.aiService.summarize(text: textToProcess, sessionToken: token)
-                    case "generateQuestions": result = try await dependencies.aiService.generateQuestions(text: textToProcess, sessionToken: token)
-                    default: result = ""
-                    }
+                switch action {
+                case "define": result = try await dependencies.aiService.explain(text: "Define el término: \(textToProcess)", sessionToken: token)
+                case "explain": result = try await dependencies.aiService.explain(text: textToProcess, sessionToken: token)
+                case "simplify": result = try await dependencies.aiService.simplify(text: textToProcess, sessionToken: token)
+                case "summarize": result = try await dependencies.aiService.summarize(text: textToProcess, sessionToken: token)
+                case "generateQuestions": result = try await dependencies.aiService.generateQuestions(text: textToProcess, sessionToken: token)
+                default: result = ""
                 }
 
                 await MainActor.run {

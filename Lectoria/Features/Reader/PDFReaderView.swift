@@ -1,5 +1,6 @@
 import SwiftUI
 import PDFKit
+import Translation
 
 // MARK: - PDFReaderView
 
@@ -44,6 +45,8 @@ struct PDFReaderView: View {
     @State private var showConsent = false
     @State private var pendingAIAction: String? = nil
     @State private var lastAIAction = ""
+    @State private var translationConfig: TranslationSession.Configuration?
+    @State private var textToTranslate = ""
     
     // Respuesta inline (globo flotante)
     @State private var showInlineBubble = false
@@ -79,7 +82,8 @@ struct PDFReaderView: View {
     enum TOCTab: String, CaseIterable, Identifiable {
         case outline = "Índice"
         case bookmarks = "Marcadores"
-        
+        case highlights = "Citas"
+
         var id: String { rawValue }
     }
 
@@ -330,15 +334,11 @@ struct PDFReaderView: View {
                         let progressPercent = Double(pageIndex) / Double(max(1, totalPages - 1))
                         let pageLabel = currentLocation?.pageLabel ?? "\(pageIndex + 1)"
                         
-                        // Chips de Marcadores y Notas Guardadas
+                        // Chips de Marcadores Guardados (las citas/resaltados viven en la pestaña "Citas" del índice)
                         let savedLocations: [(type: String, label: String, pageIndex: Int)] = bookmarks.compactMap { b in
                             guard let data = b.anchor.data(using: .utf8),
                                   let loc = try? JSONDecoder().decode(PDFLocation.self, from: data) else { return nil }
                             return (type: "bookmark", label: "🔖 Pág. \(loc.pageLabel ?? "\(loc.pageIndex + 1)")", pageIndex: loc.pageIndex)
-                        } + highlights.compactMap { h in
-                            guard let data = h.anchor.data(using: .utf8),
-                                  let loc = try? JSONDecoder().decode(PDFLocation.self, from: data) else { return nil }
-                            return (type: "highlight", label: "🖍️ Pág. \(loc.pageLabel ?? "\(loc.pageIndex + 1)")", pageIndex: loc.pageIndex)
                         }
                         
                         if !savedLocations.isEmpty {
@@ -430,6 +430,22 @@ struct PDFReaderView: View {
         .sheet(isPresented: $showSearch) {
             searchSheet(theme: theme)
         }
+        .translationTask(translationConfig) { session in
+            let text = textToTranslate
+            guard !text.isEmpty else { return }
+            do {
+                let translated = try await LocalTranslation.translate(text, using: .init(session: session))
+                withAnimation(.spring(response: 0.3)) {
+                    inlineBubbleText = translated
+                    isLoadingInline = false
+                }
+            } catch {
+                withAnimation(.spring(response: 0.3)) {
+                    inlineBubbleText = LocalTranslation.errorMessage(error)
+                    isLoadingInline = false
+                }
+            }
+        }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
@@ -504,7 +520,7 @@ struct PDFReaderView: View {
                         }
                         .scrollContentBackground(.hidden)
                     }
-                } else {
+                } else if tocTab == .bookmarks {
                     if bookmarks.isEmpty {
                         VStack(spacing: AppSpacing.sm) {
                             Spacer()
@@ -551,6 +567,57 @@ struct PDFReaderView: View {
                         }
                         .scrollContentBackground(.hidden)
                     }
+                } else {
+                    if highlights.isEmpty {
+                        VStack(spacing: AppSpacing.sm) {
+                            Spacer()
+                            Image(systemName: "highlighter")
+                                .font(.largeTitle)
+                                .foregroundStyle(AppColor.textTertiary(for: theme))
+                            Text("Aún no has guardado ninguna cita.")
+                                .font(AppTypography.callout)
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                            Spacer()
+                        }
+                    } else {
+                        List(highlights) { highlight in
+                            let location = highlight.anchor.data(using: .utf8)
+                                .flatMap { try? JSONDecoder().decode(PDFLocation.self, from: $0) }
+                            Button {
+                                if let location {
+                                    targetLocation = location
+                                    showTOC = false
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                                        Text(highlight.selectedText)
+                                            .font(AppTypography.body)
+                                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                                            .lineLimit(2)
+                                        if let location {
+                                            Text("Pág. \(location.pageLabel ?? "\(location.pageIndex + 1)")")
+                                                .font(AppTypography.caption)
+                                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                                        }
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption)
+                                        .foregroundStyle(AppColor.textTertiary(for: theme))
+                                }
+                            }
+                            .listRowBackground(AppColor.surface(for: theme))
+                            .swipeActions {
+                                Button(role: .destructive) {
+                                    deleteHighlight(highlight)
+                                } label: {
+                                    Label("Eliminar", systemImage: "trash")
+                                }
+                            }
+                        }
+                        .scrollContentBackground(.hidden)
+                    }
                 }
             }
             .background(AppColor.background(for: theme))
@@ -565,6 +632,7 @@ struct PDFReaderView: View {
         .presentationDetents([.medium, .large])
         .task {
             await loadBookmarks()
+            await loadHighlights()
         }
     }
 
@@ -902,6 +970,22 @@ struct PDFReaderView: View {
     
     private func triggerAIAction(_ actionName: String) {
         Task {
+            // La traducción local es una función Premium con su propio permiso
+            // y no consume el cupo de IA ni requiere consentimiento de IA generativa.
+            if actionName.hasPrefix("translate_") {
+                let access = await dependencies.entitlementService.canAccess(.useLocalTranslation)
+                guard access == .allowed else {
+                    await MainActor.run {
+                        self.showPaywall = true
+                    }
+                    return
+                }
+                await MainActor.run {
+                    executeInlineAI(action: actionName)
+                }
+                return
+            }
+
             let canPerform = await dependencies.entitlementService.canPerformAction(.performAIAction)
             guard canPerform else {
                 await MainActor.run {
@@ -909,7 +993,7 @@ struct PDFReaderView: View {
                 }
                 return
             }
-            
+
             if !dependencies.aiService.hasConsentedToAI {
                 await MainActor.run {
                     self.pendingAIAction = actionName
@@ -947,15 +1031,26 @@ struct PDFReaderView: View {
             isLoadingInline = true
             showInlineBubble = true
         }
-        
+
+        // Traducción local real con el framework Translation: se dispara vía .translationTask,
+        // que debe estar vinculado a la vista (puede presentar la descarga del idioma).
+        if action.hasPrefix("translate_") {
+            let langCode = String(action.dropFirst("translate_".count))
+            textToTranslate = textToProcess
+            let target = LocalTranslation.targetLanguage(for: langCode)
+            if var config = translationConfig, config.target == target {
+                config.invalidate()
+                translationConfig = config
+            } else {
+                translationConfig = TranslationSession.Configuration(source: nil, target: target)
+            }
+            return
+        }
+
         Task {
             let token = dependencies.authService.sessionToken
             do {
                 let result: String
-                if action.hasPrefix("translate_") {
-                    let langCode = String(action.dropFirst("translate_".count))
-                    result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: langCode, sessionToken: token)
-                } else {
                 switch action {
                 case "define":
                     result = try await dependencies.aiService.explain(text: "Define la palabra: \(textToProcess)", sessionToken: token)
@@ -970,8 +1065,7 @@ struct PDFReaderView: View {
                 default:
                     result = ""
                 }
-                }
-                
+
                 // Registrar consumo de IA
                 let usage = AIUsage(
                     id: UUID(),
@@ -1202,10 +1296,11 @@ struct PDFReaderView: View {
                 }
                 
                 // Texto de origen (grounding)
-                Text("\"\(selectedText.prefix(120))\"")
-                    .font(isPad ? AppTypography.body : AppTypography.caption)
-                    .foregroundStyle(AppColor.textTertiary(for: theme))
-                    .lineLimit(2)
+                ExpandableSourceText(
+                    text: selectedText,
+                    theme: theme,
+                    font: isPad ? AppTypography.body : AppTypography.caption
+                )
                 
                 Divider()
                 
@@ -1223,7 +1318,7 @@ struct PDFReaderView: View {
                     .padding(.vertical, AppSpacing.sm)
                 } else {
                     ScrollView {
-                        Text(inlineBubbleText)
+                        Text(AttributedString.inlineMarkdown(inlineBubbleText))
                             .font(isPad ? AppTypography.body : AppTypography.body)
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                             .lineSpacing(isPad ? 6 : 4)
@@ -1281,7 +1376,9 @@ struct PDFReaderView: View {
         let word = term.trimmingCharacters(in: .whitespacesAndNewlines)
             .components(separatedBy: .whitespacesAndNewlines).first ?? term
         guard !word.isEmpty else { return }
-        executeInlineAI(action: "define")
+        // Pasar por triggerAIAction para respetar límites del plan y consentimiento de IA,
+        // igual que Traducir y las demás acciones de IA.
+        triggerAIAction("define")
     }
 
     private func noteEditorSheet(theme: AppTheme) -> some View {
@@ -1427,6 +1524,13 @@ struct PDFReaderView: View {
         Task {
             try? await dependencies.bookmarkRepository.delete(id: bookmark.id)
             await loadBookmarks()
+        }
+    }
+
+    private func deleteHighlight(_ highlight: Highlight) {
+        Task {
+            try? await dependencies.highlightRepository.delete(id: highlight.id)
+            await loadHighlights()
         }
     }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 import ReadiumShared
 import ReadiumNavigator
+import Translation
 
 // MARK: - EPUBReaderView
 
@@ -45,6 +46,8 @@ struct EPUBReaderView: View {
     @State private var noteTags = ""
     @State private var pendingCategory: HighlightCategory? = nil
     @State private var lastAIAction = ""
+    @State private var translationConfig: TranslationSession.Configuration?
+    @State private var textToTranslate = ""
     
     // Respuesta inline (globo flotante)
     @State private var showInlineBubble = false
@@ -320,6 +323,22 @@ struct EPUBReaderView: View {
         // Hojas secundarias
         .sheet(isPresented: $showTOC) {
             tocSheet(theme: theme)
+        }
+        .translationTask(translationConfig) { session in
+            let text = textToTranslate
+            guard !text.isEmpty else { return }
+            do {
+                let translated = try await LocalTranslation.translate(text, using: .init(session: session))
+                withAnimation(.spring(response: 0.3)) {
+                    inlineBubbleText = translated
+                    isLoadingInline = false
+                }
+            } catch {
+                withAnimation(.spring(response: 0.3)) {
+                    inlineBubbleText = LocalTranslation.errorMessage(error)
+                    isLoadingInline = false
+                }
+            }
         }
         .sheet(isPresented: $showSettings) {
             settingsSheet(theme: theme)
@@ -703,6 +722,22 @@ struct EPUBReaderView: View {
 
     private func triggerAIAction(_ actionName: String) {
         Task {
+            // La traducción local es una función Premium con su propio permiso
+            // y no consume el cupo de IA ni requiere consentimiento de IA generativa.
+            if actionName.hasPrefix("translate_") {
+                let access = await dependencies.entitlementService.canAccess(.useLocalTranslation)
+                guard access == .allowed else {
+                    await MainActor.run {
+                        self.showPaywall = true
+                    }
+                    return
+                }
+                await MainActor.run {
+                    executeInlineAI(action: actionName)
+                }
+                return
+            }
+
             let canPerform = await dependencies.entitlementService.canPerformAction(.performAIAction)
             guard canPerform else {
                 await MainActor.run {
@@ -748,14 +783,25 @@ struct EPUBReaderView: View {
             showInlineBubble = true
         }
         
+        // Traducción local real con el framework Translation: se dispara vía .translationTask,
+        // que debe estar vinculado a la vista (puede presentar la descarga del idioma).
+        if action.hasPrefix("translate_") {
+            let langCode = String(action.dropFirst("translate_".count))
+            textToTranslate = textToProcess
+            let target = LocalTranslation.targetLanguage(for: langCode)
+            if var config = translationConfig, config.target == target {
+                config.invalidate()
+                translationConfig = config
+            } else {
+                translationConfig = TranslationSession.Configuration(source: nil, target: target)
+            }
+            return
+        }
+
         Task {
             let token = dependencies.authService.sessionToken
             do {
                 let result: String
-                if action.hasPrefix("translate_") {
-                    let langCode = String(action.dropFirst("translate_".count))
-                    result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: langCode, sessionToken: token)
-                } else {
                 switch action {
                 case "define":
                     result = try await dependencies.aiService.explain(text: "Define la palabra: \(textToProcess)", sessionToken: token)
@@ -770,8 +816,7 @@ struct EPUBReaderView: View {
                 default:
                     result = ""
                 }
-                }
-                
+
                 let usage = AIUsage(
                     id: UUID(),
                     userID: dependencies.authService.currentUser?.id,
@@ -967,7 +1012,9 @@ struct EPUBReaderView: View {
         let word = term.trimmingCharacters(in: .whitespacesAndNewlines)
             .components(separatedBy: .whitespacesAndNewlines).first ?? term
         guard !word.isEmpty else { return }
-        executeInlineAI(action: "define")
+        // Pasar por triggerAIAction para respetar límites del plan y consentimiento de IA,
+        // igual que Traducir y las demás acciones de IA.
+        triggerAIAction("define")
     }
 
     /// Globo flotante que muestra la respuesta de Diccionario, Traducción o IA inline.
@@ -1008,10 +1055,11 @@ struct EPUBReaderView: View {
                     }
                 }
                 
-                Text("\"\(selectedText.prefix(120))\"")
-                    .font(isPad ? AppTypography.body : AppTypography.caption)
-                    .foregroundStyle(AppColor.textTertiary(for: theme))
-                    .lineLimit(2)
+                ExpandableSourceText(
+                    text: selectedText,
+                    theme: theme,
+                    font: isPad ? AppTypography.body : AppTypography.caption
+                )
                 
                 Divider()
                 
@@ -1028,7 +1076,7 @@ struct EPUBReaderView: View {
                     .padding(.vertical, AppSpacing.sm)
                 } else {
                     ScrollView {
-                        Text(inlineBubbleText)
+                        Text(AttributedString.inlineMarkdown(inlineBubbleText))
                             .font(isPad ? AppTypography.body : AppTypography.body) // Or custom size if needed
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                             .lineSpacing(isPad ? 6 : 4)

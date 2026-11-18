@@ -1110,6 +1110,23 @@ struct TextReaderView: View {
     
     private func triggerAIAction(_ actionName: String, text: String, blockIndex: Int) {
         Task {
+            // La traducción local es una función Premium con su propio permiso
+            // y no consume el cupo de IA ni requiere consentimiento de IA generativa.
+            if actionName.hasPrefix("translate_") {
+                let access = await dependencies.entitlementService.canAccess(.useLocalTranslation)
+                await MainActor.run {
+                    guard access == .allowed else {
+                        self.showPaywall = true
+                        return
+                    }
+                    self.textToProcess = text
+                    self.selectedBlockIndex = blockIndex
+                    self.pendingAIAction = actionName
+                    self.showAIResponse = true
+                }
+                return
+            }
+
             let canPerform = await dependencies.entitlementService.canPerformAction(.performAIAction)
             guard canPerform else {
                 await MainActor.run {

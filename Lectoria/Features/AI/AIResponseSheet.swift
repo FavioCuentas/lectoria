@@ -1,4 +1,5 @@
 import SwiftUI
+import Translation
 
 // MARK: - AIResponseSheet
 
@@ -17,6 +18,7 @@ struct AIResponseSheet: View {
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
     @State private var isSaved = false
+    @State private var translationConfig: TranslationSession.Configuration?
 
     var body: some View {
         let theme = themeManager.currentTheme
@@ -53,9 +55,7 @@ struct AIResponseSheet: View {
                         Button {
                             self.errorMessage = nil
                             self.isLoading = true
-                            Task {
-                                await runAIRequest()
-                            }
+                            startRequest()
                         } label: {
                             Text(String(localized: "Reintentar", comment: "Alert action: retry"))
                                 .font(AppTypography.bodyBold)
@@ -83,10 +83,12 @@ struct AIResponseSheet: View {
                                     .font(AppTypography.footnote.weight(.semibold))
                                     .foregroundStyle(AppColor.textTertiary(for: theme))
                                 
-                                Text("\"\(textToProcess)\"")
-                                    .font(AppTypography.caption)
-                                    .foregroundStyle(AppColor.textSecondary(for: theme))
-                                    .lineLimit(3)
+                                ExpandableSourceText(
+                                    text: textToProcess,
+                                    theme: theme,
+                                    collapsedLines: 3,
+                                    expandedMaxHeight: 240
+                                )
                             }
                             .padding(AppSpacing.md)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -96,7 +98,7 @@ struct AIResponseSheet: View {
                             Divider()
                             
                             // Respuesta de la IA
-                            Text(responseText)
+                            Text(AttributedString.inlineMarkdown(responseText))
                                 .font(AppTypography.body)
                                 .foregroundStyle(AppColor.textPrimary(for: theme))
                                 .lineSpacing(AppTypography.defaultLineSpacing)
@@ -163,14 +165,24 @@ struct AIResponseSheet: View {
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                await runAIRequest()
+            .onAppear {
+                startRequest()
+            }
+            .translationTask(translationConfig) { session in
+                do {
+                    let translated = try await LocalTranslation.translate(textToProcess, using: .init(session: session))
+                    responseText = translated
+                    isLoading = false
+                } catch {
+                    errorMessage = LocalTranslation.errorMessage(error)
+                    isLoading = false
+                }
             }
         }
     }
 
     private var actionTitle: String {
-        if actionName.hasPrefix("translate") { return "Traducción de IA" }
+        if isTranslation { return "Traducción" }
         switch actionName {
         case "explain": return "Explicación de IA"
         case "simplify": return "Concepto Simplificado"
@@ -180,20 +192,32 @@ struct AIResponseSheet: View {
         }
     }
 
+    private var isTranslation: Bool { actionName.hasPrefix("translate") }
+
+    /// Inicia (o reintenta) la petición. La traducción es local vía framework Translation
+    /// y no consume cupo de IA; el resto de acciones usan el servicio de IA.
+    private func startRequest() {
+        guard isTranslation else {
+            Task { await runAIRequest() }
+            return
+        }
+        let lang = actionName.hasPrefix("translate_")
+            ? String(actionName.dropFirst("translate_".count))
+            : (targetLanguage ?? "en")
+        let target = LocalTranslation.targetLanguage(for: lang)
+        if var config = translationConfig, config.target == target {
+            config.invalidate()
+            translationConfig = config
+        } else {
+            translationConfig = TranslationSession.Configuration(source: nil, target: target)
+        }
+    }
+
     private func runAIRequest() async {
         let token = dependencies.authService.sessionToken
-        
+
         do {
             let result: String
-            if actionName.hasPrefix("translate") {
-                let lang: String
-                if actionName.hasPrefix("translate_") {
-                    lang = String(actionName.dropFirst("translate_".count))
-                } else {
-                    lang = targetLanguage ?? "en"
-                }
-                result = try await dependencies.aiService.translate(text: textToProcess, targetLanguage: lang, sessionToken: token)
-            } else {
             switch actionName {
             case "explain":
                 result = try await dependencies.aiService.explain(text: textToProcess, sessionToken: token)
@@ -205,7 +229,6 @@ struct AIResponseSheet: View {
                 result = try await dependencies.aiService.generateQuestions(text: textToProcess, sessionToken: token)
             default:
                 result = ""
-            }
             }
 
             // Registrar el consumo de IA localmente para control de límites
