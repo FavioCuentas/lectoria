@@ -93,4 +93,41 @@ struct ImportServiceTests {
             _ = try await importService.importPublication(from: tempFileURL)
         }
     }
+
+    // MARK: - Conversión de presentaciones al importar
+
+    @MainActor final class RenderingSpy: PresentationPDFRendering {
+        var requested: [String] = []
+        func ensureRendered(localFileName: String, publicationID: UUID) async {
+            requested.append(localFileName)
+        }
+    }
+
+    @Test("Importing a PPTX requests PDF rendering in the background")
+    func testImportPPTXRequestsRendering() async throws {
+        let spy = RenderingSpy()
+        let service = ImportService(publicationRepository: pubRepo, presentationRenderer: spy)
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("deck-\(UUID().uuidString).pptx")
+        try SamplePPTXGenerator.createSamplePPTXData().write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let record = try await service.importPublication(from: url)
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(spy.requested == [record.localFileName])
+    }
+
+    @Test("Importing a TXT does not request rendering")
+    func testImportTXTDoesNotRequestRendering() async throws {
+        let spy = RenderingSpy()
+        let service = ImportService(publicationRepository: pubRepo, presentationRenderer: spy)
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("nota-\(UUID().uuidString).txt")
+        try "Texto de prueba \(UUID())".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        _ = try await service.importPublication(from: url)
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(spy.requested.isEmpty)
+    }
 }

@@ -63,6 +63,22 @@ struct PresentationReaderView: View {
     @State private var inlineBubbleText = ""
     @State private var isLoadingInline = false
 
+    /// Ruta PDF (PDFKit: búsqueda, resaltado, progreso) si el archivo es PDF o si ya existe el PDF
+    /// convertido de la presentación. Se decide una sola vez al abrir: la vista nunca cambia de
+    /// ruta mientras se lee; un PDF recién convertido se usa desde la siguiente apertura.
+    @State private var usesPDFRoute: Bool
+
+    init(record: PublicationRecord) {
+        self.record = record
+        let isPDF = record.localFileName.lowercased().hasSuffix(".pdf")
+        var hasRendered = false
+        if !isPDF, let directory = RenderedPresentationStore.publicationsDirectory() {
+            let rendered = RenderedPresentationStore.renderedURL(forLocalFileName: record.localFileName, in: directory)
+            hasRendered = FileManager.default.fileExists(atPath: rendered.path)
+        }
+        _usesPDFRoute = State(initialValue: isPDF || hasRendered)
+    }
+
     private var hasNotesOnCurrentSlide: Bool {
         notes.contains { $0.anchor == "slide_\(currentSlideIndex + 1)" } ||
         presentationAnnotations.contains { $0.slideIndex == currentSlideIndex }
@@ -503,7 +519,7 @@ struct PresentationReaderView: View {
 
     var body: some View {
         Group {
-            if record.localFileName.lowercased().hasSuffix(".pdf") {
+            if usesPDFRoute {
                 pdfReaderBody
             } else {
                 simplePresentationBody
@@ -741,6 +757,9 @@ struct PresentationReaderView: View {
         }
         .task {
             await resolveAndPrepareFile()
+        }
+        .onChange(of: currentSlideIndex) { _, newIndex in
+            saveSlideProgress(newIndex)
         }
         .onChange(of: totalSlides) { _, newTotal in
             if newTotal <= 0 {
@@ -1287,13 +1306,30 @@ struct PresentationReaderView: View {
         }
 
         if let validURL = finalURL {
+            // `fileURL` sigue siendo el original: es lo que se comparte o exporta.
             self.fileURL = validURL
             if validURL.pathExtension.lowercased() == "pdf", let pdf = PDFDocument(url: validURL) {
                 self.pdfDocument = pdf
                 self.totalSlides = pdf.pageCount
+            } else if usesPDFRoute, let rendered = renderedDocument(nextTo: validURL) {
+                self.pdfDocument = rendered
+                self.totalSlides = rendered.pageCount
             } else {
                 self.pdfDocument = nil
                 self.totalSlides = 0
+            }
+
+            if pdfDocument == nil, RenderedPresentationStore.isConvertible(localFileName: record.localFileName) {
+                // Sin PDF (o ilegible): se lee con QuickLook y se convierte en segundo plano.
+                let renderer = dependencies.presentationRenderingService
+                let localFileName = record.localFileName
+                let publicationID = record.id
+                Task { await renderer.ensureRendered(localFileName: localFileName, publicationID: publicationID) }
+            }
+
+            if pdfDocument != nil {
+                let saved = try? await dependencies.readingProgressRepository.fetchProgress(forPublication: record.id)
+                self.currentSlideIndex = PresentationProgress.resumeIndex(savedPageNumber: saved?.pageNumber, totalSlides: totalSlides)
             }
 
             if self.totalSlides <= 0 {
@@ -1308,7 +1344,12 @@ struct PresentationReaderView: View {
                     publicationID: record.id,
                     format: record.publicationType.analyticsFormat,
                     analyticsService: dependencies.analyticsService,
-                    readingSessionRepository: dependencies.readingSessionRepository
+                    readingSessionRepository: dependencies.readingSessionRepository,
+                    progressProvider: {
+                        // QuickLook no informa la diapositiva: solo hay progreso en la ruta PDF.
+                        guard pdfDocument != nil else { return nil }
+                        return PresentationProgress.percentage(slideIndex: currentSlideIndex, totalSlides: totalSlides)
+                    }
                 )
                 coordinator.startSession()
                 self.sessionCoordinator = coordinator
@@ -1317,6 +1358,31 @@ struct PresentationReaderView: View {
             self.errorMessage = String(localized: "El archivo de la presentación no fue encontrado en el almacenamiento local.", comment: "File missing error")
             self.isLoading = false
         }
+    }
+
+    /// PDF convertido junto al original, solo si es válido (si no, se usa QuickLook).
+    private func renderedDocument(nextTo original: URL) -> PDFDocument? {
+        let rendered = RenderedPresentationStore.renderedURL(
+            forLocalFileName: original.lastPathComponent,
+            in: original.deletingLastPathComponent()
+        )
+        return RenderedPresentationStore.validDocument(at: rendered)
+    }
+
+    /// Guarda la diapositiva actual para reanudar y para las estadísticas ("terminados").
+    private func saveSlideProgress(_ index: Int) {
+        guard pdfDocument != nil, totalSlides > 0 else { return }
+        let progress = ReadingProgress(
+            publicationID: record.id,
+            locatorJSON: "{\"slideIndex\":\(index)}",
+            percentage: PresentationProgress.percentage(slideIndex: index, totalSlides: totalSlides),
+            pageNumber: index + 1,
+            chapterTitle: "Diapositiva \(index + 1)",
+            deviceID: "iOS-Simulator",
+            version: 1
+        )
+        let repository = dependencies.readingProgressRepository
+        Task { try? await repository.saveProgress(progress) }
     }
 
     // MARK: - Error View

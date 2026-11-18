@@ -94,6 +94,94 @@ struct PresentationRenderingTests {
         #expect(!FileManager.default.fileExists(atPath: destination.path))
     }
 
+    // MARK: - PresentationRenderingService
+
+    /// Conversión falsa: cuenta llamadas y, si `fails` es falso, escribe un PDF de una página.
+    @MainActor final class FakeConversion {
+        var calls = 0
+        var fails = false
+        var delay: Duration = .zero
+        func convert(_ source: URL, _ count: Int, _ destination: URL) async throws {
+            calls += 1
+            if delay > .zero { try await Task.sleep(for: delay) }
+            if fails { throw PresentationConversionError.timedOut }
+            try PresentationRenderingTests.makePDF(pages: ["ok"]).write(to: destination)
+        }
+    }
+
+    private func makeService(_ fake: FakeConversion, dir: URL) -> PresentationRenderingService {
+        PresentationRenderingService(
+            directory: { dir },
+            convert: { try await fake.convert($0, $1, $2) },
+            slideCount: { _ in 1 }
+        )
+    }
+
+    @Test func testEnsureRenderedSkipsWhenValidPDFExists() async throws {
+        let dir = try tempDirectory()
+        try Self.makePDF(pages: ["ya"]).write(to: RenderedPresentationStore.renderedURL(forLocalFileName: "a.pptx", in: dir))
+        let fake = FakeConversion()
+        await makeService(fake, dir: dir).ensureRendered(localFileName: "a.pptx", publicationID: UUID())
+        #expect(fake.calls == 0)
+    }
+
+    @Test func testEnsureRenderedConvertsOncePerSessionOnFailure() async throws {
+        let dir = try tempDirectory()
+        let fake = FakeConversion()
+        fake.fails = true
+        let service = makeService(fake, dir: dir)
+        let id = UUID()
+        await service.ensureRendered(localFileName: "a.pptx", publicationID: id)
+        await service.ensureRendered(localFileName: "a.pptx", publicationID: id)
+        #expect(fake.calls == 1)
+        #expect(!FileManager.default.fileExists(atPath: RenderedPresentationStore.renderedURL(forLocalFileName: "a.pptx", in: dir).path))
+    }
+
+    @Test func testConcurrentEnsureRenderedRunsOneConversion() async throws {
+        let dir = try tempDirectory()
+        let fake = FakeConversion()
+        fake.delay = .milliseconds(100)
+        let service = makeService(fake, dir: dir)
+        let id = UUID()
+        async let first: Void = service.ensureRendered(localFileName: "a.pptx", publicationID: id)
+        async let second: Void = service.ensureRendered(localFileName: "a.pptx", publicationID: id)
+        _ = await (first, second)
+        #expect(fake.calls == 1)
+    }
+
+    @Test func testEnsureRenderedReplacesUnreadableFile() async throws {
+        let dir = try tempDirectory()
+        try Data("roto".utf8).write(to: RenderedPresentationStore.renderedURL(forLocalFileName: "a.pptx", in: dir))
+        let fake = FakeConversion()
+        await makeService(fake, dir: dir).ensureRendered(localFileName: "a.pptx", publicationID: UUID())
+        #expect(fake.calls == 1)
+        #expect(RenderedPresentationStore.validDocument(at: RenderedPresentationStore.renderedURL(forLocalFileName: "a.pptx", in: dir)) != nil)
+    }
+
+    @Test func testEnsureRenderedIgnoresLegacyFormats() async throws {
+        let dir = try tempDirectory()
+        let fake = FakeConversion()
+        await makeService(fake, dir: dir).ensureRendered(localFileName: "x.ppt", publicationID: UUID())
+        #expect(fake.calls == 0)
+    }
+
+    // MARK: - PresentationProgress
+
+    @Test func testResumeIndexClamps() {
+        #expect(PresentationProgress.resumeIndex(savedPageNumber: 12, totalSlides: 10) == 9)
+        #expect(PresentationProgress.resumeIndex(savedPageNumber: nil, totalSlides: 10) == 0)
+        #expect(PresentationProgress.resumeIndex(savedPageNumber: 0, totalSlides: 10) == 0)
+        #expect(PresentationProgress.resumeIndex(savedPageNumber: 3, totalSlides: 0) == 0)
+        #expect(PresentationProgress.resumeIndex(savedPageNumber: 3, totalSlides: 10) == 2)
+    }
+
+    @Test func testPercentage() {
+        #expect(PresentationProgress.percentage(slideIndex: 0, totalSlides: 1) == 0)
+        #expect(PresentationProgress.percentage(slideIndex: 4, totalSlides: 5) == 1)
+        #expect(PresentationProgress.percentage(slideIndex: 2, totalSlides: 5) == 0.5)
+        #expect(PresentationProgress.percentage(slideIndex: 9, totalSlides: 5) == 1)
+    }
+
     @Test func testIsConvertibleOnlyPPTX() {
         #expect(RenderedPresentationStore.isConvertible(localFileName: "a.pptx"))
         #expect(RenderedPresentationStore.isConvertible(localFileName: "A.PPTX"))
