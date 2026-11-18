@@ -868,7 +868,13 @@ struct PDFReaderView: View {
                     publicationID: record.id,
                     format: record.publicationType.analyticsFormat,
                     analyticsService: dependencies.analyticsService,
-                    readingSessionRepository: dependencies.readingSessionRepository
+                    readingSessionRepository: dependencies.readingSessionRepository,
+                    progressProvider: {
+                        // Mismo cálculo que `saveReadingProgress`.
+                        guard let location = currentLocation else { return nil }
+                        let total = location.totalPages ?? 1
+                        return Double(location.pageIndex) / Double(max(1, total - 1))
+                    }
                 )
                 coordinator.startSession()
                 self.sessionCoordinator = coordinator

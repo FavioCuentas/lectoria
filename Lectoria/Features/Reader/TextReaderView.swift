@@ -976,7 +976,13 @@ struct TextReaderView: View {
                     publicationID: record.id,
                     format: record.publicationType.analyticsFormat,
                     analyticsService: dependencies.analyticsService,
-                    readingSessionRepository: dependencies.readingSessionRepository
+                    readingSessionRepository: dependencies.readingSessionRepository,
+                    progressProvider: {
+                        // Mismo cálculo que `saveReadingProgress`.
+                        guard let location = currentLocation else { return nil }
+                        let total = blocks.count
+                        return total > 1 ? Double(location.blockIndex) / Double(total - 1) : 0.0
+                    }
                 )
                 coordinator.startSession()
                 self.sessionCoordinator = coordinator

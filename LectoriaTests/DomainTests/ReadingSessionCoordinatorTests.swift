@@ -15,8 +15,13 @@ final class MockReadingSessionRepository: ReadingSessionRepository {
         savedSessions
     }
 
+    /// Upsert por `id`, igual que el repositorio real.
     func save(_ session: ReadingSession) async throws {
-        savedSessions.append(session)
+        if let index = savedSessions.firstIndex(where: { $0.id == session.id }) {
+            savedSessions[index] = session
+        } else {
+            savedSessions.append(session)
+        }
     }
 }
 
@@ -227,5 +232,94 @@ struct ReadingSessionCoordinatorTests {
         ]
         let sanitizedInvalid = PropertySanitizer.sanitize(invalidProps, for: .readingSessionEnded)
         #expect(sanitizedInvalid["format"] == nil)
+    }
+
+    @Test
+    func testCheckpointsAndEndShareOneSessionID() async throws {
+        let mockRepo = MockReadingSessionRepository()
+        var currentInstant = ContinuousClock.now
+        let coordinator = ReadingSessionCoordinator(
+            publicationID: UUID(),
+            format: "pdf",
+            analyticsService: MockAnalyticsService(),
+            readingSessionRepository: mockRepo,
+            nowProvider: { currentInstant }
+        )
+
+        coordinator.startSession()
+        currentInstant = currentInstant.advanced(by: .seconds(20))
+        coordinator.handleScenePhaseChange(.background)
+        coordinator.handleScenePhaseChange(.active)
+        currentInstant = currentInstant.advanced(by: .seconds(20))
+        coordinator.handleScenePhaseChange(.background)
+        coordinator.endSession()
+        try? await Task.sleep(for: .milliseconds(100))
+
+        #expect(Set(mockRepo.savedSessions.map(\.id)).count == 1)
+        #expect(mockRepo.savedSessions.first?.id == coordinator.sessionID)
+        #expect(mockRepo.savedSessions.first?.activeSeconds == 40)
+    }
+
+    @Test
+    func testProgressProviderRecordsStartAndEndPercentage() async throws {
+        let mockRepo = MockReadingSessionRepository()
+        var progress = 0.2
+        let coordinator = ReadingSessionCoordinator(
+            publicationID: UUID(),
+            format: "epub",
+            analyticsService: MockAnalyticsService(),
+            readingSessionRepository: mockRepo,
+            progressProvider: { progress }
+        )
+
+        coordinator.startSession()
+        progress = 0.5
+        coordinator.endSession()
+        try? await Task.sleep(for: .milliseconds(100))
+
+        let saved = try #require(mockRepo.savedSessions.first)
+        #expect(saved.startPercentage == 0.2)
+        #expect(saved.endPercentage == 0.5)
+    }
+
+    @Test
+    func testNilProgressProviderKeepsZero() async throws {
+        let mockRepo = MockReadingSessionRepository()
+        let coordinator = ReadingSessionCoordinator(
+            publicationID: UUID(),
+            format: "txt",
+            analyticsService: MockAnalyticsService(),
+            readingSessionRepository: mockRepo
+        )
+
+        coordinator.startSession()
+        coordinator.endSession()
+        try? await Task.sleep(for: .milliseconds(100))
+
+        let saved = try #require(mockRepo.savedSessions.first)
+        #expect(saved.startPercentage == 0)
+        #expect(saved.endPercentage == 0)
+    }
+
+    /// El proveedor captura el estado de la vista (que a su vez retiene al coordinador):
+    /// al terminar la sesión debe soltarse para no filtrar el lector entero.
+    @Test
+    func testEndSessionReleasesProgressProvider() async throws {
+        final class Box { var value = 0.5 }
+        var box: Box? = Box()
+        weak var weakBox = box
+        let coordinator = ReadingSessionCoordinator(
+            publicationID: UUID(),
+            format: "pdf",
+            analyticsService: MockAnalyticsService(),
+            readingSessionRepository: MockReadingSessionRepository(),
+            progressProvider: { [box] in box?.value }
+        )
+        box = nil
+        coordinator.startSession()
+        #expect(weakBox != nil)
+        coordinator.endSession()
+        #expect(weakBox == nil)
+        withExtendedLifetime(coordinator) {}
     }
 }

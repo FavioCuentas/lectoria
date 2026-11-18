@@ -360,9 +360,23 @@ public final class SwiftDataReadingSessionRepository: ReadingSessionRepository {
         return models.map { $0.toDomain() }
     }
 
+    /// Upsert por `id`: los checkpoints de una misma sesión actualizan su registro.
     public func save(_ session: ReadingSession) async throws {
+        let sessionID = session.id
+        let existingDescriptor = FetchDescriptor<ReadingSessionModel>(
+            predicate: #Predicate<ReadingSessionModel> { $0.id == sessionID }
+        )
+        if let existing = try context.fetch(existingDescriptor).first {
+            existing.endedAt = session.endedAt
+            existing.activeSeconds = session.activeSeconds
+            existing.startPercentage = session.startPercentage
+            existing.endPercentage = session.endPercentage
+            try context.save()
+            return
+        }
+
         let model = ReadingSessionModel.fromDomain(session)
-        
+
         // Relate with PublicationModel if it exists
         let pubID = session.publicationID
         let pubDescriptor = FetchDescriptor<PublicationModel>(
