@@ -100,11 +100,11 @@ enum PDFTextSearch {
     }
 }
 
-// MARK: - PDFSearchNavigatorBar
+// MARK: - ReaderSearchNavigatorBar
 
 /// Barra flotante tras elegir un resultado: muestra "3 de 12" y permite ir a la coincidencia
 /// anterior/siguiente, volver a la lista o cerrar la búsqueda.
-struct PDFSearchNavigatorBar: View {
+struct ReaderSearchNavigatorBar: View {
     let query: String
     let activeIndex: Int
     let total: Int

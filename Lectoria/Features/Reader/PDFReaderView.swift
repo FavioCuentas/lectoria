@@ -138,7 +138,7 @@ struct PDFReaderView: View {
             // Barra de navegación entre coincidencias de búsqueda
             if let activeIndex = activeMatchIndex, !searchMatches.isEmpty, !showSearch {
                 VStack {
-                    PDFSearchNavigatorBar(
+                    ReaderSearchNavigatorBar(
                         query: searchQuery,
                         activeIndex: activeIndex,
                         total: searchMatches.count,

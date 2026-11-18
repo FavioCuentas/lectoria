@@ -29,6 +29,9 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
     /// Ubicación externa forzada (para navegar desde el índice/TOC).
     var targetLocation: EPUBLocation? = nil
 
+    /// Expone el navegador de Readium a SwiftUI (búsqueda: decoraciones y saltos directos).
+    var navigatorBinding: Binding<EPUBNavigatorViewController?>? = nil
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -46,6 +49,7 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
             )
             navigator.delegate = context.coordinator
             context.coordinator.navigator = navigator
+            exposeNavigator(navigator)
             return navigator
         } catch {
             logger.error("[EPUBNavigatorWrapper] Error al instanciar Navigator con posición inicial: \(error). Reintentando sin posición.")
@@ -56,9 +60,17 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
             ) {
                 navigator.delegate = context.coordinator
                 context.coordinator.navigator = navigator
+                exposeNavigator(navigator)
                 return navigator
             }
             fatalError("No se pudo instanciar el EPUBNavigatorViewController de Readium: \(error.localizedDescription)")
+        }
+    }
+
+    private func exposeNavigator(_ navigator: EPUBNavigatorViewController) {
+        guard let navigatorBinding else { return }
+        DispatchQueue.main.async {
+            navigatorBinding.wrappedValue = navigator
         }
     }
 

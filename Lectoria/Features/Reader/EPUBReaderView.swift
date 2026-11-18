@@ -63,6 +63,19 @@ struct EPUBReaderView: View {
     @State private var goToPageText = ""
     @State private var lastJumpOriginLocation: EPUBLocation? = nil
 
+    // Búsqueda de texto
+    @State private var navigatorReference: EPUBNavigatorViewController? = nil
+    @State private var showSearch = false
+    @State private var searchQuery = ""
+    @State private var searchMatches: [EPUBSearchMatch] = []
+    @State private var isSearching = false
+    /// Búsqueda en curso; se cancela al lanzar otra o al limpiar.
+    @State private var searchTask: Task<Void, Never>? = nil
+    /// Coincidencia activa (sombreada en naranja y mostrada en la barra "N de M").
+    @State private var activeMatchIndex: Int? = nil
+    /// Coincidencia a la que saltar cuando termine de cerrarse la hoja de búsqueda.
+    @State private var pendingSearchJump: Int? = nil
+
     // Preferencias del usuario (persistidas o inicializadas por defecto)
     @State private var fontSize: Double = 1.0
     @State private var isScrollMode = false
@@ -95,7 +108,8 @@ struct EPUBReaderView: View {
                             showUI.toggle()
                         }
                     },
-                    targetLocation: targetLocation
+                    targetLocation: targetLocation,
+                    navigatorBinding: $navigatorReference
                 )
                 .ignoresSafeArea(.all, edges: showUI ? [] : .all)
             }
@@ -111,6 +125,26 @@ struct EPUBReaderView: View {
                     .transition(.opacity)
             }
             
+            // Barra de navegación entre coincidencias de búsqueda
+            if let activeIndex = activeMatchIndex, !searchMatches.isEmpty, !showSearch {
+                VStack {
+                    ReaderSearchNavigatorBar(
+                        query: searchQuery,
+                        activeIndex: activeIndex,
+                        total: searchMatches.count,
+                        theme: appTheme,
+                        onPrevious: { selectSearchMatch(at: (activeIndex - 1 + searchMatches.count) % searchMatches.count) },
+                        onNext: { selectSearchMatch(at: (activeIndex + 1) % searchMatches.count) },
+                        onShowList: { showSearch = true },
+                        onClose: { clearSearch() }
+                    )
+                    .padding(.top, showUI ? safeAreaTop + 56 : AppSpacing.md)
+                    Spacer()
+                }
+                .ignoresSafeArea(edges: .top)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // Globo flotante de respuesta inline
             if showInlineBubble {
                 inlineResponseBubble(theme: appTheme)
@@ -201,6 +235,17 @@ struct EPUBReaderView: View {
                         .foregroundStyle(AppColor.textPrimary(for: theme))
                     
                     Spacer()
+                    
+                    // Botón de Búsqueda de Texto
+                    Button {
+                        showSearch.toggle()
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.title3)
+                            .padding(AppSpacing.md)
+                            .foregroundStyle(AppColor.textPrimary(for: theme))
+                    }
+                    .accessibilityLabel("Buscar en el libro")
                     
                     // Botón de Formato / Preferencias
                     Button {
@@ -340,6 +385,15 @@ struct EPUBReaderView: View {
                 }
             }
         }
+        .sheet(isPresented: $showSearch, onDismiss: {
+            // Navegar solo cuando la hoja ya se cerró para que el salto no se pierda.
+            if let index = pendingSearchJump {
+                pendingSearchJump = nil
+                selectSearchMatch(at: index)
+            }
+        }) {
+            searchSheet(theme: theme)
+        }
         .sheet(isPresented: $showSettings) {
             settingsSheet(theme: theme)
         }
@@ -369,6 +423,173 @@ struct EPUBReaderView: View {
     }
 
     // MARK: - Table of Contents Sheet
+
+    // MARK: - Búsqueda
+
+    private func searchSheet(theme: AppTheme) -> some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(AppColor.textSecondary(for: theme))
+
+                    TextField("Buscar texto en el libro...", text: $searchQuery)
+                        .textFieldStyle(.plain)
+                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .submitLabel(.search)
+                        .onSubmit { performSearch() }
+
+                    if !searchQuery.isEmpty {
+                        Button {
+                            clearSearch()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(AppColor.textSecondary(for: theme))
+                        }
+                    }
+                }
+                .padding(AppSpacing.md)
+                .background(AppColor.surfaceSecondary(for: theme))
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
+                .padding(.horizontal, AppSpacing.lg)
+                .padding(.vertical, AppSpacing.sm)
+
+                Divider()
+                    .background(AppColor.border(for: theme))
+
+                if isSearching {
+                    VStack {
+                        Spacer()
+                        ProgressView()
+                            .tint(AppColor.accent(for: theme))
+                        Text("Buscando...")
+                            .font(AppTypography.callout)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                            .padding(.top, AppSpacing.xs)
+                        Spacer()
+                    }
+                } else if searchMatches.isEmpty {
+                    VStack {
+                        Spacer()
+                        Text(searchQuery.isEmpty ? "Escribe una palabra y pulsa Buscar." : "No se encontraron resultados.")
+                            .font(AppTypography.body)
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                        Spacer()
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(searchSummary)
+                            .font(AppTypography.footnote.weight(.semibold))
+                            .foregroundStyle(AppColor.textSecondary(for: theme))
+                            .padding(.horizontal, AppSpacing.lg)
+                            .padding(.vertical, AppSpacing.xs)
+
+                        List(searchMatches) { match in
+                            Button {
+                                activeMatchIndex = match.id
+                                pendingSearchJump = match.id
+                                showSearch = false
+                            } label: {
+                                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                                    Text(match.chapterTitle)
+                                        .font(AppTypography.footnote.weight(.semibold))
+                                        .foregroundStyle(AppColor.accent(for: theme))
+                                        .lineLimit(1)
+
+                                    Text(match.snippet)
+                                        .font(AppTypography.body)
+                                        .foregroundStyle(AppColor.textPrimary(for: theme))
+                                        .lineLimit(2)
+                                }
+                            }
+                            .listRowBackground(
+                                match.id == activeMatchIndex
+                                    ? AppColor.accent(for: theme).opacity(0.12)
+                                    : AppColor.surface(for: theme)
+                            )
+                        }
+                        .scrollContentBackground(.hidden)
+                    }
+                }
+            }
+            .background(AppColor.background(for: theme))
+            .navigationTitle("Buscar en el libro")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Cerrar") { showSearch = false }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func performSearch() {
+        guard !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let publication = adapter.publication else { return }
+
+        // Cancelar una búsqueda anterior aún en curso: la nueva es la dueña del indicador.
+        searchTask?.cancel()
+        isSearching = true
+        activeMatchIndex = nil
+        searchMatches.removeAll()
+        if let navigator = navigatorReference {
+            EPUBTextSearch.clearHighlights(on: navigator)
+        }
+        let query = searchQuery
+
+        searchTask = Task { @MainActor in
+            let matches = await EPUBTextSearch.search(query, in: publication)
+            // Si se lanzó otra búsqueda o se limpió mientras tanto, descartar estos resultados.
+            guard !Task.isCancelled else { return }
+            searchMatches = matches
+            isSearching = false
+            if let navigator = navigatorReference {
+                EPUBTextSearch.applyHighlights(matches, activeIndex: nil, on: navigator)
+            }
+        }
+    }
+
+    /// Activa la coincidencia `index`: la sombrea en naranja y navega a su posición.
+    private func selectSearchMatch(at index: Int) {
+        guard searchMatches.indices.contains(index), let navigator = navigatorReference else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            activeMatchIndex = index
+        }
+        EPUBTextSearch.applyHighlights(searchMatches, activeIndex: index, on: navigator)
+        let locator = searchMatches[index].locator
+        Task { @MainActor in
+            _ = await navigator.go(to: locator, options: .animated)
+        }
+    }
+
+    /// Limpia la búsqueda, sus resultados y el sombreado del libro.
+    private func clearSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchQuery = ""
+        searchMatches.removeAll()
+        pendingSearchJump = nil
+        isSearching = false
+        withAnimation(.easeInOut(duration: 0.2)) {
+            activeMatchIndex = nil
+        }
+        if let navigator = navigatorReference {
+            EPUBTextSearch.clearHighlights(on: navigator)
+        }
+    }
+
+    /// Texto de resumen: "12 coincidencias en 3 capítulos".
+    private var searchSummary: String {
+        let total = searchMatches.count
+        let chapters = EPUBTextSearch.chapterCount(of: searchMatches)
+        let matchesText = total == 1 ? "1 coincidencia" : "\(total) coincidencias"
+        let chaptersText = chapters == 1 ? "1 capítulo" : "\(chapters) capítulos"
+        let capped = total >= EPUBTextSearch.maxMatches ? " (mostrando las primeras \(EPUBTextSearch.maxMatches))" : ""
+        return "\(matchesText) en \(chaptersText)\(capped)"
+    }
 
     private func tocSheet(theme: AppTheme) -> some View {
         NavigationStack {
