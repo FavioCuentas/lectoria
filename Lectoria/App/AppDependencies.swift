@@ -83,7 +83,11 @@ public final class AppDependencies {
         if isFakeConfig {
             subService = subscriptionService ?? MockSubscriptionService(hasActiveSubscription: true)
         } else {
-            subService = subscriptionService ?? StoreKitSubscriptionService(repository: subRepo)
+            let auth = self.authService
+            subService = subscriptionService ?? StoreKitSubscriptionService(
+                repository: subRepo,
+                currentEmailProvider: { auth.currentUser?.email }
+            )
         }
         self.subscriptionService = subService
         

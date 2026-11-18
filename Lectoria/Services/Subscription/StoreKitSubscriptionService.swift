@@ -13,8 +13,38 @@ private let logger = Logger(subsystem: "com.orvexa.Lectoria", category: "Subscri
 /// persiste localmente el entitlement activo en la base de datos para soporte offline.
 @Observable
 public final class StoreKitSubscriptionService: SubscriptionService, PurchaseService, @unchecked Sendable {
-    public private(set) var hasActiveSubscription: Bool = false
-    public private(set) var activeEntitlement: SubscriptionEntitlement? = nil
+    /// Estado real reportado por StoreKit 2.
+    private var storeHasActiveSubscription: Bool = false
+    private var storeActiveEntitlement: SubscriptionEntitlement? = nil
+
+    /// Devuelve el email de la sesión actual; se usa para conceder acceso de cortesía.
+    private let currentEmailProvider: (@Sendable () -> String?)?
+
+    /// Cuentas con Premium de por vida concedido manualmente (cuentas de prueba del equipo).
+    /// Solo aplica a sesiones autenticadas (OTP/Google/Apple verifican la propiedad del email).
+    static let complimentaryLifetimeEmails: Set<String> = [
+        "faviocuentas@yahoo.com"
+    ]
+
+    /// `true` si la sesión actual pertenece a una cuenta de cortesía de por vida.
+    private var hasComplimentaryLifetime: Bool {
+        guard let email = currentEmailProvider?()?.trimmingCharacters(in: .whitespaces).lowercased() else { return false }
+        return Self.complimentaryLifetimeEmails.contains(email)
+    }
+
+    public var hasActiveSubscription: Bool {
+        storeHasActiveSubscription || hasComplimentaryLifetime
+    }
+
+    public var activeEntitlement: SubscriptionEntitlement? {
+        if let storeActiveEntitlement { return storeActiveEntitlement }
+        guard hasComplimentaryLifetime else { return nil }
+        return SubscriptionEntitlement(
+            productID: Self.lifetimeProductID,
+            status: "active",
+            expirationDate: nil
+        )
+    }
 
     private let repository: any SubscriptionRepository
     private var updatesTask: Task<Void, Never>? = nil
@@ -29,8 +59,12 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
         lifetimeProductID
     ]
 
-    public init(repository: any SubscriptionRepository) {
+    public init(
+        repository: any SubscriptionRepository,
+        currentEmailProvider: (@Sendable () -> String?)? = nil
+    ) {
         self.repository = repository
+        self.currentEmailProvider = currentEmailProvider
 
         Task {
             await loadCachedEntitlement()
@@ -54,8 +88,8 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
                     try? await repository.saveEntitlement(expired)
                 } else {
                     await MainActor.run {
-                        self.activeEntitlement = active
-                        self.hasActiveSubscription = true
+                        self.storeActiveEntitlement = active
+                        self.storeHasActiveSubscription = true
                     }
                 }
             }
@@ -175,8 +209,8 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
         let ent = activeEnt
 
         await MainActor.run {
-            self.hasActiveSubscription = hasActive
-            self.activeEntitlement = ent
+            self.storeHasActiveSubscription = hasActive
+            self.storeActiveEntitlement = ent
         }
     }
 
@@ -192,8 +226,8 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
         )
         try? await repository.saveEntitlement(entitlement)
         await MainActor.run {
-            self.hasActiveSubscription = active
-            self.activeEntitlement = active ? entitlement : nil
+            self.storeHasActiveSubscription = active
+            self.storeActiveEntitlement = active ? entitlement : nil
         }
     }
 
