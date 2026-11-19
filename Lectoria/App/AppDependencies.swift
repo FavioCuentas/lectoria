@@ -140,10 +140,9 @@ public final class AppDependencies {
 
         // 1. Migrar publicaciones huérfanas de invitado
         if let pubs = try? await publicationRepository.fetchAll() {
-            for var pub in pubs {
+            for pub in pubs {
                 if pub.ownerID == nil {
-                    pub.ownerID = userID
-                    try? await publicationRepository.save(pub)
+                    await PublicationRecordUpdates.update(pub.id, repository: publicationRepository) { $0.ownerID = userID }
                 }
             }
         }
@@ -195,9 +194,7 @@ public final class AppDependencies {
                     metadata: metadata,
                     force: true
                 ) {
-                    var updated = pub
-                    updated.coverPath = newCoverPath
-                    try? await publicationRepository.save(updated)
+                    await PublicationRecordUpdates.update(pub.id, repository: publicationRepository) { $0.coverPath = newCoverPath }
                 }
             }
         }

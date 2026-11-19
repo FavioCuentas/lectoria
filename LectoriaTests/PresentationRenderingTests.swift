@@ -236,6 +236,13 @@ struct PresentationRenderingTests {
         #expect(try await repo.fetch(id: pdf.id)?.localFileName == "b.rendered.pdf")
     }
 
+    /// Presentaciones grandes (material de clase de 50+ diapositivas) necesitan más de 30 s.
+    @Test func testOverallTimeoutScalesWithSlides() {
+        #expect(PresentationPDFConverter.overallTimeout(forSlides: 10) == .seconds(30))
+        #expect(PresentationPDFConverter.overallTimeout(forSlides: 100) == .seconds(110))
+        #expect(PresentationPDFConverter.overallTimeout(forSlides: 1000) == .seconds(240))
+    }
+
     @Test func testIsConvertibleOnlyPPTX() {
         #expect(RenderedPresentationStore.isConvertible(localFileName: "a.pptx"))
         #expect(RenderedPresentationStore.isConvertible(localFileName: "A.PPTX"))

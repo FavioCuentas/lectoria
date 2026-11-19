@@ -66,7 +66,7 @@ public final class ReadingSessionCoordinator {
         guard !isSessionActive && !hasEnded else { return }
 
         self.startedAt = Date()
-        self.startPercentage = progressProvider?() ?? 0
+        self.startPercentage = Self.clamp(progressProvider?() ?? 0)
         self.lastResumeInstant = nowProvider()
         self.isSessionActive = true
     }
@@ -139,7 +139,12 @@ public final class ReadingSessionCoordinator {
 
     /// Progreso al momento de guardar; si no hay proveedor, se conserva el inicial.
     private var currentPercentage: Double {
-        progressProvider?() ?? startPercentage
+        Self.clamp(progressProvider?() ?? startPercentage)
+    }
+
+    /// El progreso siempre se guarda entre 0 y 1.
+    private static func clamp(_ value: Double) -> Double {
+        min(1, max(0, value))
     }
 
     private func saveCheckpoint() {

@@ -136,7 +136,8 @@ struct ReadingStatsCalculatorTests {
             ],
             progress: [a: 0.5, b: 0.99]
         )
-        #expect(stats.startedCount == 2)
+        // a (sesión y progreso), b (progreso) y c (terminado: también cuenta como empezado).
+        #expect(stats.startedCount == 3)
         #expect(stats.finishedCount == 2)
     }
 
@@ -173,5 +174,13 @@ struct ReadingStatsCalculatorTests {
 
         let noStreak = compute([session(pub: pub, start: "2026-11-10 09:00", seconds: 120)])
         #expect(ReadingStatsCalculator.mascotMessage(for: noStreak) == "¿Leemos un rato hoy?")
+    }
+
+    /// Un documento marcado como terminado también cuenta como empezado.
+    @Test func testFinishedNeverExceedsStarted() {
+        let id = UUID()
+        let stats = compute([], publications: [publication(id, finishedAt: now)])
+        #expect(stats.finishedCount == 1)
+        #expect(stats.startedCount == 1)
     }
 }

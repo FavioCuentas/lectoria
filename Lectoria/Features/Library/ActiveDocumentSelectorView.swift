@@ -168,11 +168,10 @@ struct ActiveDocumentSelectorView: View {
         isSaving = true
 
         Task {
-            for var pub in publications {
+            for pub in publications {
                 let shouldBeActive = selectedIDs.contains(pub.id)
                 if pub.isArchived == shouldBeActive {
-                    pub.isArchived = !shouldBeActive
-                    try? await dependencies.publicationRepository.save(pub)
+                    await PublicationRecordUpdates.update(pub.id, repository: dependencies.publicationRepository) { $0.isArchived = !shouldBeActive }
                 }
             }
 
