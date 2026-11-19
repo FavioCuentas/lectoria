@@ -76,6 +76,7 @@ enum ReadingStatsCalculator {
         let publicationsWithSessions = Set(unique.filter { $0.activeSeconds > 0 }.map(\.publicationID))
         let startedCount = publications.filter {
             publicationsWithSessions.contains($0.id) || (progressByPublication[$0.id] ?? 0) > 0
+                || $0.finishedAt != nil || (progressByPublication[$0.id] ?? 0) >= finishedThreshold
         }.count
         let finishedCount = publications.filter {
             $0.finishedAt != nil || (progressByPublication[$0.id] ?? 0) >= finishedThreshold

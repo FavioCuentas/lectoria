@@ -38,9 +38,24 @@
 		F23506A130084E1E00F873D4 /* LectoriaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = LectoriaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		F2F0A00130084E1B00F873D4 /* Exceptions for "Lectoria" folder in "Lectoria" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				docs/ADR-001-architecture.md,
+				docs/LECTORIA_PRODUCT_AND_BUILD_SPEC.md,
+				Resources/Lectoria.storekit,
+			);
+			target = F235068730084E1B00F873D4 /* Lectoria */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		F235068A30084E1B00F873D4 /* Lectoria */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				F2F0A00130084E1B00F873D4 /* Exceptions for "Lectoria" folder in "Lectoria" target */,
+			);
 			path = Lectoria;
 			sourceTree = "<group>";
 		};

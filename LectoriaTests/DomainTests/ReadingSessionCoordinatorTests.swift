@@ -322,4 +322,25 @@ struct ReadingSessionCoordinatorTests {
         #expect(weakBox == nil)
         withExtendedLifetime(coordinator) {}
     }
+
+    /// El porcentaje guardado siempre queda entre 0 y 1, aunque el lector calcule de más.
+    @Test
+    func testPercentagesAreClampedToZeroOne() async throws {
+        let mockRepo = MockReadingSessionRepository()
+        var progress = -0.3
+        let coordinator = ReadingSessionCoordinator(
+            publicationID: UUID(),
+            format: "pdf",
+            analyticsService: MockAnalyticsService(),
+            readingSessionRepository: mockRepo,
+            progressProvider: { progress }
+        )
+        coordinator.startSession()
+        progress = 7
+        coordinator.endSession()
+        try? await Task.sleep(for: .milliseconds(100))
+        let saved = try #require(mockRepo.savedSessions.first)
+        #expect(saved.startPercentage == 0)
+        #expect(saved.endPercentage == 1)
+    }
 }

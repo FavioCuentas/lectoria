@@ -23,6 +23,11 @@ struct LibraryView: View {
 
     // Búsqueda global (títulos, contenido, notas y destacados)
     @State private var searchResults = GlobalSearchResults()
+    /// Consulta que produjo `searchResults` y datos de las publicaciones en ese momento:
+    /// se calculan una vez por búsqueda, no en cada tecla.
+    @State private var resultsQuery = ""
+    @State private var resultsPublications: [UUID: PublicationRecord] = [:]
+    @State private var resultsProgress: [UUID: Double] = [:]
     @State private var isSearchingLibrary = false
     @State private var contentTarget: ContentSearchTarget?
     @State private var annotationTarget: AnnotationOpenTarget?
@@ -145,7 +150,10 @@ struct LibraryView: View {
             }
         }
         .task {
+            #if DEBUG
+            // Presentación de prueba solo en compilaciones de desarrollo, nunca en la App Store.
             await dependencies.seedSamplePresentationIfNeeded()
+            #endif
         }
     }
 
@@ -298,23 +306,18 @@ struct LibraryView: View {
     }
 
     private func searchResultsView(theme: AppTheme) -> some View {
-        let records = publicationModels.map { $0.toDomain() }
-        let byID = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let progress = Dictionary(publicationModels.map { model in
-            (model.id, model.progressList.max(by: { $0.updatedAt < $1.updatedAt })?.percentage ?? 0)
-        }, uniquingKeysWith: { first, _ in first })
-
         return LibrarySearchResultsView(
             results: searchResults,
-            publications: byID,
-            progress: progress,
+            publications: resultsPublications,
+            progress: resultsProgress,
             pendingIndexCount: dependencies.searchIndexingService.pendingCount,
             isSearching: isSearchingLibrary,
             theme: theme,
             onOpenPublication: { handlePublicationTap($0) },
             onOpenHit: { record, hit in
                 guard !showArchivedAlertIfNeeded(record) else { return }
-                contentTarget = ContentSearchTarget(publication: record, query: trimmedSearch, scope: hit.locator)
+                // La consulta que encontró este resultado, no lo que se esté escribiendo ahora.
+                contentTarget = ContentSearchTarget(publication: record, query: resultsQuery, scope: hit.locator)
             },
             onOpenAnnotation: { record, annotation in
                 guard !showArchivedAlertIfNeeded(record) else { return }
@@ -334,9 +337,15 @@ struct LibraryView: View {
         isSearchingLibrary = true
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else { return }
+        let records = publicationModels.map { $0.toDomain() }
         let service = GlobalSearchService(store: dependencies.searchIndexStore, container: modelContext.container)
-        let results = await service.search(query, publications: publicationModels.map { $0.toDomain() })
+        let results = await service.search(query, publications: records)
         guard !Task.isCancelled else { return }
+        resultsPublications = Dictionary(records.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        resultsProgress = Dictionary(publicationModels.map { model in
+            (model.id, model.progressList.max(by: { $0.updatedAt < $1.updatedAt })?.percentage ?? 0)
+        }, uniquingKeysWith: { first, _ in first })
+        resultsQuery = query
         searchResults = results
         isSearchingLibrary = false
     }

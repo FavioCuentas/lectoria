@@ -821,7 +821,7 @@ struct EPUBReaderView: View {
                 locatorJSON: locatorJSON,
                 percentage: percentage,
                 chapterTitle: chapterTitle,
-                deviceID: "iOS-Simulator",
+                deviceID: DeviceIdentity.current,
                 version: 1
             )
             try? await dependencies.readingProgressRepository.saveProgress(progress)

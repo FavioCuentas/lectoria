@@ -21,12 +21,20 @@ struct StatsView: View {
     @State private var sessions: [ReadingSession] = []
     @State private var publications: [PublicationRecord] = []
     @State private var progress: [UUID: Double] = [:]
+    @State private var loadFailed = false
 
     var body: some View {
         let theme = themeManager.currentTheme
 
         ScrollView {
-            if let stats {
+            if loadFailed {
+                ContentUnavailableView(
+                    String(localized: "No se pudieron cargar las estadísticas", comment: "Stats: load error title"),
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(String(localized: "Tu historial de lectura sigue guardado. Vuelve a abrir esta pantalla en un momento.", comment: "Stats: load error description"))
+                )
+                .padding(.top, AppSpacing.xxxl)
+            } else if let stats {
                 VStack(alignment: .leading, spacing: AppSpacing.xl) {
                     MascotSlotView(message: ReadingStatsCalculator.mascotMessage(for: stats), theme: theme)
                     weeklyGoalSection(stats, theme: theme)
@@ -275,6 +283,8 @@ struct StatsView: View {
             progress = progressByID
         } catch {
             logger.error("No se pudieron cargar las estadísticas: \(error.localizedDescription)")
+            loadFailed = true
+            return
         }
         recompute()
     }

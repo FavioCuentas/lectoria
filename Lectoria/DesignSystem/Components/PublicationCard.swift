@@ -46,10 +46,8 @@ struct PublicationCard: View {
         .contextMenu {
             // Fijar / Desfijar
             Button {
-                var updated = publication
-                updated.isPinned.toggle()
                 Task {
-                    try? await dependencies.publicationRepository.save(updated)
+                    await PublicationRecordUpdates.update(publication.id, repository: dependencies.publicationRepository) { $0.isPinned.toggle() }
                     await MainActor.run {
                         onUpdate?()
                     }
@@ -61,10 +59,8 @@ struct PublicationCard: View {
 
             // Favorito / Quitar favorito
             Button {
-                var updated = publication
-                updated.isFavorite.toggle()
                 Task {
-                    try? await dependencies.publicationRepository.save(updated)
+                    await PublicationRecordUpdates.update(publication.id, repository: dependencies.publicationRepository) { $0.isFavorite.toggle() }
                     await MainActor.run {
                         onUpdate?()
                     }
