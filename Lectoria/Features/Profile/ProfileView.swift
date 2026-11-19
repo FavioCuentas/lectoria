@@ -14,6 +14,9 @@ struct ProfileView: View {
 
     @Bindable private var screenAwake = ScreenAwakeController.shared
     @State private var showPrivacy = false
+    @State private var showAbout = false
+    @State private var isExporting = false
+    @State private var exportedFile: ExportedFile?
     @State private var isProcessing = false
     @State private var showSignOutAlert = false
     @State private var showDeleteAlert = false
@@ -100,11 +103,13 @@ struct ProfileView: View {
 
                     Divider()
 
-                    let isPremium = dependencies.subscriptionService.hasActiveSubscription
                     SettingsRow(
                         icon: "crown",
                         title: String(localized: "Plan de suscripción", comment: "Profile: subscription plan"),
-                        variant: .value(isPremium ? String(localized: "Premium (Simulado)", comment: "Profile: premium plan") : String(localized: "Gratuito", comment: "Profile: free plan"))
+                        variant: .value(SubscriptionPlanLabel.text(
+                            isPremium: dependencies.subscriptionService.hasActiveSubscription,
+                            productID: dependencies.subscriptionService.activeEntitlement?.productID
+                        ))
                     ) {
                         showPaywall = true
                     }
@@ -163,8 +168,11 @@ struct ProfileView: View {
 
                     SettingsRow(
                         icon: "square.and.arrow.up",
-                        title: String(localized: "Exportar datos", comment: "Profile: export data")
-                    ) {}
+                        title: String(localized: "Exportar notas y destacados", comment: "Profile: export annotations"),
+                        variant: isExporting ? .value(String(localized: "Preparando…", comment: "Profile: export in progress")) : .navigation
+                    ) {
+                        exportAnnotations()
+                    }
                 }
 
                 // Sección: Info
@@ -191,7 +199,9 @@ struct ProfileView: View {
                                       comment: "Profile: about"),
                         subtitle: String(localized: "Versión \(AppEnvironment.current().appVersion)",
                                          comment: "Profile: version")
-                    ) {}
+                    ) {
+                        showAbout = true
+                    }
                 }
 
                 // Zona peligrosa
@@ -254,6 +264,13 @@ struct ProfileView: View {
         .navigationDestination(isPresented: $showPrivacy) {
             PrivacySettingsView()
         }
+        .navigationDestination(isPresented: $showAbout) {
+            AboutView()
+        }
+        .sheet(item: $exportedFile) { file in
+            ShareSheetView(activityItems: [file.url])
+                .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
@@ -284,6 +301,35 @@ struct ProfileView: View {
         .padding(.horizontal, AppSpacing.lg)
         .background(AppColor.surface(for: theme))
         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+    }
+
+    // MARK: - Exportar
+
+    struct ExportedFile: Identifiable {
+        let url: URL
+        var id: URL { url }
+    }
+
+    /// Genera el Markdown con todas las notas y destacados y abre el menú de compartir.
+    private func exportAnnotations() {
+        guard !isExporting else { return }
+        isExporting = true
+        Task {
+            defer { isExporting = false }
+            do {
+                let now = Date()
+                let markdown = AnnotationsExporter.markdown(
+                    publications: try await dependencies.publicationRepository.fetchAll(),
+                    highlights: try await dependencies.highlightRepository.fetchAll(),
+                    notes: try await dependencies.noteRepository.fetchAll(),
+                    exportedAt: now
+                )
+                exportedFile = ExportedFile(url: try AnnotationsExporter.writeFile(markdown, exportedAt: now))
+            } catch {
+                errorMessage = String(localized: "No se pudieron exportar tus notas. Inténtalo de nuevo.", comment: "Profile: export failed")
+                showErrorAlert = true
+            }
+        }
     }
 
     // MARK: - Account Actions
