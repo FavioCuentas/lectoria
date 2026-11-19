@@ -2,6 +2,13 @@
 
 Fecha: 19-11-2026.
 
+> **Actualización (19-11-2026, tras probarlo en el iPad):** el usuario pidió retirar la herramienta **Texto** (resaltador de texto con el Pencil) porque no respondía.
+>
+> - La paleta queda **solo con íconos**: Pluma, Marcador y Borrador.
+> - Como en Notas, mantener presionado un ícono, o tocar otra vez el que ya está elegido, abre su color y grosor.
+> - En EPUB y texto no hay herramientas y el botón del lápiz no aparece.
+> - Las entregas 2 y 3 (EPUB y texto) quedan en pausa.
+
 ## Intención
 
 En el iPad, los lectores de Lectoria quieren estudiar marcando con el Apple Pencil, como en Notability o Notas de Apple. Hay dos tipos de marca:
