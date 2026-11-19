@@ -12,7 +12,8 @@ struct ProfileView: View {
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppDependencies.self) private var dependencies
 
-    @State private var keepScreenOn = false
+    @Bindable private var screenAwake = ScreenAwakeController.shared
+    @State private var showPrivacy = false
     @State private var isProcessing = false
     @State private var showSignOutAlert = false
     @State private var showDeleteAlert = false
@@ -45,18 +46,18 @@ struct ProfileView: View {
 
                         Divider()
 
-                        let isSyncing = dependencies.syncService.isSyncing
-                        let lastSync = dependencies.syncService.lastSyncedAt
-                        
+                        // Copia de seguridad automática: la fila solo informa del estado.
+                        let backup = dependencies.autoBackup
                         SettingsRow(
-                            icon: "arrow.triangle.2.circlepath",
-                            title: String(localized: "Sincronizar ahora", comment: "Profile: manual sync action"),
-                            variant: .value(isSyncing ? String(localized: "Sincronizando...", comment: "Sync status: active") : (lastSync != nil ? String(localized: "Sincronizado", comment: "Sync status: done") : String(localized: "Nunca", comment: "Sync status: never")))
-                        ) {
-                            Task {
-                                try? await dependencies.syncService.syncAll()
-                            }
-                        }
+                            icon: "icloud.and.arrow.up",
+                            title: String(localized: "Copia de seguridad", comment: "Profile: automatic backup status"),
+                            subtitle: String(localized: "Notas, destacados y progreso", comment: "Profile: what the backup includes"),
+                            variant: .value(AutoBackupCoordinator.statusText(
+                                lastSyncedAt: backup.lastSyncedAt,
+                                isRunning: backup.isRunning,
+                                failed: backup.lastAttemptFailed
+                            ))
+                        )
 
                         Divider()
 
@@ -134,32 +135,9 @@ struct ProfileView: View {
                         icon: "sun.max",
                         title: String(localized: "Pantalla activa al leer",
                                       comment: "Profile: keep screen on"),
-                        variant: .toggle($keepScreenOn)
-                    )
-                }
-
-                // Sección: Inteligencia Artificial
-                profileSection(theme: theme) {
-                    let consentBinding = Binding<Bool>(
-                        get: { dependencies.aiService.hasConsentedToAI },
-                        set: { dependencies.aiService.hasConsentedToAI = $0 }
-                    )
-                    SettingsRow(
-                        icon: "sparkles",
-                        title: String(localized: "Consentimiento de IA", comment: "Profile: AI consent toggle"),
-                        variant: .toggle(consentBinding)
-                    )
-
-                    Divider()
-
-                    let analyticsBinding = Binding<Bool>(
-                        get: { AnalyticsPrivacyManager.shared.isAnalyticsEnabled },
-                        set: { AnalyticsPrivacyManager.shared.isAnalyticsEnabled = $0 }
-                    )
-                    SettingsRow(
-                        icon: "shield.ruler",
-                        title: String(localized: "Compartir analítica anónima", comment: "Profile: anonymous analytics toggle"),
-                        variant: .toggle(analyticsBinding)
+                        subtitle: String(localized: "El iPhone no se bloquea mientras lees",
+                                         comment: "Profile: keep screen on explanation"),
+                        variant: .toggle($screenAwake.isEnabled)
                     )
                 }
 
@@ -170,6 +148,15 @@ struct ProfileView: View {
                         title: String(localized: "Estadísticas", comment: "Profile: statistics")
                     ) {
                         showStats = true
+                    }
+
+                    Divider()
+
+                    SettingsRow(
+                        icon: "lock.shield",
+                        title: String(localized: "Privacidad", comment: "Profile: privacy settings")
+                    ) {
+                        showPrivacy = true
                     }
 
                     Divider()
@@ -236,7 +223,7 @@ struct ProfileView: View {
                 performSignOut()
             }
         } message: {
-            Text("Al cerrar sesión, no podrás sincronizar nuevos libros y anotaciones hasta que inicies sesión de nuevo.",
+            Text("Al cerrar sesión se detiene la copia de seguridad de tus notas, destacados y progreso hasta que vuelvas a iniciar sesión.",
                  comment: "Profile: sign out alert body")
         }
         .alert(
@@ -263,6 +250,9 @@ struct ProfileView: View {
         }
         .navigationDestination(isPresented: $showStats) {
             StatsView()
+        }
+        .navigationDestination(isPresented: $showPrivacy) {
+            PrivacySettingsView()
         }
         .sheet(isPresented: $showPaywall) {
             PaywallView()

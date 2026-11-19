@@ -32,6 +32,7 @@ struct LectoriaApp: App {
     }
 
     @State private var showSplash = true
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -60,6 +61,11 @@ struct LectoriaApp: App {
             .modelContainer(modelContainer)
             .onOpenURL { url in
                 handleOpenURL(url)
+            }
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                // Copia de seguridad silenciosa al abrir la app y al volver a ella.
+                guard phase == .active else { return }
+                Task { await dependencies.autoBackup.backupIfNeeded() }
             }
             .task {
                 try? await Task.sleep(for: .seconds(1.8))

@@ -32,6 +32,8 @@ public final class AppDependencies {
     let searchIndexStore: SearchIndexStore?
     /// Mantiene el índice de la búsqueda global al día.
     let searchIndexingService: SearchIndexingService
+    /// Copia de seguridad automática de anotaciones y progreso (Perfil muestra su estado).
+    let autoBackup: AutoBackupCoordinator
     public let authService: any AuthService
     public let subscriptionService: any SubscriptionService
     public let entitlementService: any EntitlementService
@@ -132,6 +134,8 @@ public final class AppDependencies {
         self.aiService = aiService ?? LocalDeviceAIService()
         
         self.syncService = syncService ?? SupabaseSyncService(container: modelContainer, authService: self.authService, supabaseURL: env.supabaseURL, anonKey: env.supabaseAnonKey)
+        let auth = self.authService
+        self.autoBackup = AutoBackupCoordinator(sync: self.syncService, isSignedIn: { auth.currentUser != nil })
     }
 
     /// Migra idempotentemente todas las publicaciones locales, anotaciones, progresos y consumos de IA de invitado al nuevo ID de usuario registrado.

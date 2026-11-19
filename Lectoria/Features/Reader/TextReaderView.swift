@@ -203,6 +203,7 @@ struct TextReaderView: View {
         .onChange(of: scenePhase) { _, newPhase in
             sessionCoordinator?.handleScenePhaseChange(newPhase)
         }
+        .keepsScreenAwakeWhileReading()
         .onDisappear {
             sessionCoordinator?.endSession()
             Task {
