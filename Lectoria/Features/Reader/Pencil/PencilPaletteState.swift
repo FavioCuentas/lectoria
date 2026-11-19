@@ -4,7 +4,7 @@ import Observation
 // MARK: - Herramientas
 
 enum PencilTool: String, CaseIterable {
-    case text, pen, marker, eraser
+    case pen, marker, eraser
 }
 
 enum PencilWidth: Int, CaseIterable {
@@ -42,8 +42,9 @@ final class PencilPaletteState {
         let tools = Self.tools(for: publicationType)
         availableTools = tools
 
-        let savedTool = defaults.string(forKey: Keys.tool).flatMap(PencilTool.init(rawValue:)) ?? .text
-        tool = tools.contains(savedTool) ? savedTool : .text
+        // Una preferencia antigua ("text", herramienta retirada) vuelve a la pluma.
+        let savedTool = defaults.string(forKey: Keys.tool).flatMap(PencilTool.init(rawValue:)) ?? .pen
+        tool = tools.contains(savedTool) ? savedTool : .pen
         category = defaults.string(forKey: Keys.category).flatMap(HighlightCategory.init(rawValue:))
             .flatMap { HighlightCategory.userSelectableCases.contains($0) ? $0 : nil } ?? .mainIdea
         penColor = defaults.string(forKey: Keys.penColor).flatMap(Self.decode) ?? .category(.mainIdea)
@@ -51,10 +52,11 @@ final class PencilPaletteState {
     }
 
     /// Pluma, marcador y borrador solo tienen sentido en contenido de diseño fijo (PDF y presentaciones).
+    /// En EPUB y texto no hay herramientas y el botón del lápiz no aparece.
     static func tools(for type: PublicationType) -> [PencilTool] {
         switch type {
-        case .pdf, .pptx: [.text, .pen, .marker, .eraser]
-        case .epub, .txt, .markdown, .pastedText: [.text]
+        case .pdf, .pptx: [.pen, .marker, .eraser]
+        case .epub, .txt, .markdown, .pastedText: []
         }
     }
 
@@ -63,7 +65,7 @@ final class PencilPaletteState {
         switch tool {
         case .pen: [2, 4, 7][width.rawValue]
         case .marker: [12, 20, 30][width.rawValue]
-        case .text, .eraser: 0
+        case .eraser: 0
         }
     }
 

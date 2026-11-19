@@ -19,7 +19,11 @@ final class InkOverlayProvider: NSObject, PDFPageOverlayViewProvider, PKCanvasVi
 
     /// Dibujos por índice de página, en coordenadas de página.
     private var drawings: [Int: PKDrawing] = [:]
+    /// Lienzo más reciente de cada página (para mostrar los dibujos al terminar de cargar).
     private var canvases: [Int: InkCanvasView] = [:]
+    /// Todos los lienzos en pantalla. PDFKit puede pedir otro lienzo para una página antes de retirar
+    /// el anterior: la herramienta se aplica a todos para que ninguno quede activo con la paleta oculta.
+    private let liveCanvases = NSHashTable<InkCanvasView>.weakObjects()
     private var pendingSaves: [Int: Task<Void, Never>] = [:]
 
     private var tool: PencilTool?
@@ -43,8 +47,8 @@ final class InkOverlayProvider: NSObject, PDFPageOverlayViewProvider, PKCanvasVi
         }
         // Lo dibujado mientras cargaba tiene prioridad.
         drawings = loaded.merging(drawings) { _, current in current }
-        for (page, canvas) in canvases {
-            canvas.setPageDrawing(drawings[page] ?? PKDrawing())
+        for canvas in liveCanvases.allObjects {
+            canvas.setPageDrawing(drawings[canvas.pageIndex] ?? PKDrawing())
         }
     }
 
@@ -54,7 +58,7 @@ final class InkOverlayProvider: NSObject, PDFPageOverlayViewProvider, PKCanvasVi
         self.tool = tool
         self.color = color
         self.width = width
-        canvases.values.forEach(configure)
+        liveCanvases.allObjects.forEach(configure)
         if wasDrawing && !Self.isInkTool(tool) { flushSaves() }
     }
 
@@ -66,18 +70,23 @@ final class InkOverlayProvider: NSObject, PDFPageOverlayViewProvider, PKCanvasVi
 
     func pdfView(_ view: PDFView, overlayViewFor page: PDFPage) -> UIView? {
         guard let index = document?.index(for: page), index != NSNotFound else { return nil }
-        let canvas = canvases[index] ?? InkCanvasView(pageIndex: index, pageSize: page.bounds(for: view.displayBox).size)
+        // Un lienzo nuevo por cada vista de página: nunca se reutiliza uno que puede seguir en pantalla.
+        let canvas = InkCanvasView(pageIndex: index, pageSize: page.bounds(for: view.displayBox).size)
         canvas.delegate = self
         canvas.setPageDrawing(drawings[index] ?? PKDrawing())
         configure(canvas)
         canvases[index] = canvas
+        liveCanvases.add(canvas)
         return canvas
     }
 
     func pdfView(_ pdfView: PDFView, willEndDisplayingOverlayView overlayView: UIView, for page: PDFPage) {
         guard let canvas = overlayView as? InkCanvasView else { return }
-        saveNow(page: canvas.pageIndex)
-        canvases[canvas.pageIndex] = nil
+        // Solo se guarda si la página tiene cambios: así desplazarse no reescribe el archivo
+        // ni puede borrar dibujos guardados que aún no terminaban de cargar.
+        if pendingSaves[canvas.pageIndex] != nil { saveNow(page: canvas.pageIndex) }
+        if canvases[canvas.pageIndex] === canvas { canvases[canvas.pageIndex] = nil }
+        liveCanvases.remove(canvas)
     }
 
     // MARK: PKCanvasViewDelegate
@@ -122,7 +131,7 @@ final class InkOverlayProvider: NSObject, PDFPageOverlayViewProvider, PKCanvasVi
         case .pen: canvas.tool = PKInkingTool(.pen, color: color, width: width)
         case .marker: canvas.tool = PKInkingTool(.marker, color: color, width: width)
         case .eraser: canvas.tool = PKEraserTool(.vector)
-        case .text, nil: break
+        case nil: break
         }
         canvas.isUserInteractionEnabled = Self.isInkTool(tool)
     }

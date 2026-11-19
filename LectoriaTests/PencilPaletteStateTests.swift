@@ -13,15 +13,15 @@ struct PencilPaletteStateTests {
 
     @Test func testToolsPerFormat() {
         let defaults = makeDefaults()
-        #expect(PencilPaletteState(publicationType: .pdf, defaults: defaults).availableTools == [.text, .pen, .marker, .eraser])
-        #expect(PencilPaletteState(publicationType: .pptx, defaults: defaults).availableTools == [.text, .pen, .marker, .eraser])
-        #expect(PencilPaletteState(publicationType: .epub, defaults: defaults).availableTools == [.text])
-        #expect(PencilPaletteState(publicationType: .txt, defaults: defaults).availableTools == [.text])
+        #expect(PencilPaletteState(publicationType: .pdf, defaults: defaults).availableTools == [.pen, .marker, .eraser])
+        #expect(PencilPaletteState(publicationType: .pptx, defaults: defaults).availableTools == [.pen, .marker, .eraser])
+        #expect(PencilPaletteState(publicationType: .epub, defaults: defaults).availableTools.isEmpty)
+        #expect(PencilPaletteState(publicationType: .txt, defaults: defaults).availableTools.isEmpty)
     }
 
     @Test func testDefaults() {
         let state = PencilPaletteState(publicationType: .pdf, defaults: makeDefaults())
-        #expect(state.tool == .text)
+        #expect(state.tool == .pen)
         #expect(state.category == .mainIdea)
         #expect(state.penColor == .category(.mainIdea))
         #expect(state.width == .medium)
@@ -42,10 +42,11 @@ struct PencilPaletteStateTests {
         #expect(restored.category == .question)
     }
 
-    @Test func testUnavailableSavedToolFallsBackToText() {
+    /// La herramienta Texto se quitó: una preferencia antigua con "text" vuelve a la pluma.
+    @Test func testLegacyTextToolFallsBackToPen() {
         let defaults = makeDefaults()
-        PencilPaletteState(publicationType: .pdf, defaults: defaults).tool = .pen
-        #expect(PencilPaletteState(publicationType: .epub, defaults: defaults).tool == .text)
+        defaults.set("text", forKey: "pencil.tool")
+        #expect(PencilPaletteState(publicationType: .pdf, defaults: defaults).tool == .pen)
     }
 
     @Test func testStrokeWidths() {
@@ -56,7 +57,7 @@ struct PencilPaletteStateTests {
         state.tool = .marker
         state.width = .thick
         #expect(state.strokeWidth() == 30)
-        state.tool = .text
+        state.tool = .eraser
         #expect(state.strokeWidth() == 0)
     }
 

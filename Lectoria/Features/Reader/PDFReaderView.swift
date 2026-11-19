@@ -131,9 +131,6 @@ struct PDFReaderView: View {
                     },
                     targetLocation: targetLocation,
                     pencilTool: pencilMode ? pencilPalette.tool : nil,
-                    onPencilTextStroke: { selection in
-                        createHighlight(from: selection, category: pencilPalette.category)
-                    },
                     inkPublicationID: record.id,
                     inkColor: pencilPalette.inkColor(),
                     inkWidth: pencilPalette.strokeWidth()
@@ -953,37 +950,6 @@ struct PDFReaderView: View {
         case .dictionary: return "dictionary"
         case .translation: return "translation"
         case .ai: return "ai"
-        }
-    }
-
-    /// Destacado creado con el Pencil (herramienta Texto): la página y el texto salen de la selección del trazo.
-    private func createHighlight(from selection: PDFSelection, category: HighlightCategory) {
-        guard let page = selection.pages.first,
-              let document = page.document,
-              let text = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty else { return }
-        let bounds = selection.bounds(for: page)
-        let location = PDFLocation(
-            pageIndex: document.index(for: page),
-            totalPages: document.pageCount,
-            pageLabel: page.label,
-            selectionBounds: [Double(bounds.origin.x), Double(bounds.origin.y), Double(bounds.size.width), Double(bounds.size.height)]
-        )
-        let anchor = (try? JSONEncoder().encode(location)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        let highlight = Highlight(
-            publicationID: record.id,
-            anchor: anchor,
-            selectedText: text,
-            category: category.rawValue,
-            colorToken: categoryColorToken(category)
-        )
-        Task {
-            guard await dependencies.entitlementService.canPerformAction(.createHighlight) else {
-                showPaywall = true
-                return
-            }
-            try? await dependencies.highlightRepository.save(highlight)
-            await loadHighlights()
         }
     }
 
