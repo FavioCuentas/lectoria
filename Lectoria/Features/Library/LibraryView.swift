@@ -150,7 +150,10 @@ struct LibraryView: View {
             }
         }
         .task {
+            #if DEBUG
+            // Presentación de prueba solo en compilaciones de desarrollo, nunca en la App Store.
             await dependencies.seedSamplePresentationIfNeeded()
+            #endif
         }
     }
 

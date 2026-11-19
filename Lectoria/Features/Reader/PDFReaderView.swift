@@ -1509,7 +1509,7 @@ struct PDFReaderView: View {
                 percentage: percentage,
                 pageNumber: location.pageIndex + 1,
                 chapterTitle: chapterTitle,
-                deviceID: "iOS-Simulator",
+                deviceID: DeviceIdentity.current,
                 version: 1
             )
             try? await dependencies.readingProgressRepository.saveProgress(progress)
