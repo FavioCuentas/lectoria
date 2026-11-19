@@ -133,7 +133,10 @@ struct PDFReaderView: View {
                     pencilTool: pencilMode ? pencilPalette.tool : nil,
                     onPencilTextStroke: { selection in
                         createHighlight(from: selection, category: pencilPalette.category)
-                    }
+                    },
+                    inkPublicationID: record.id,
+                    inkColor: pencilPalette.inkColor(),
+                    inkWidth: pencilPalette.strokeWidth()
                 )
                 .ignoresSafeArea(.all, edges: showUI ? [] : .all)
             }

@@ -33,12 +33,24 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
     /// Trazo de la herramienta Texto terminado sobre texto: se convierte en destacado.
     var onPencilTextStroke: ((PDFSelection) -> Void)? = nil
 
+    /// Trazo libre (pluma y marcador): documento al que pertenecen los dibujos, color y grosor actuales.
+    var inkPublicationID: UUID? = nil
+    var inkColor: UIColor = .black
+    var inkWidth: CGFloat = 4
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
     func makeUIView(context: Context) -> PDFView {
         let pdfView = PDFView()
+        // El proveedor de lienzos va antes del documento (lo pide PDFKit). Solo en iPad.
+        if let inkPublicationID, UIDevice.current.userInterfaceIdiom == .pad {
+            let provider = InkOverlayProvider(publicationID: inkPublicationID, document: document)
+            pdfView.pageOverlayViewProvider = provider
+            context.coordinator.inkProvider = provider
+            Task { await provider.loadDrawings() }
+        }
         pdfView.document = document
         pdfView.autoScales = true
         pdfView.minScaleFactor = pdfView.scaleFactorForSizeToFit
@@ -98,6 +110,11 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
     func updateUIView(_ uiView: PDFView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.applyPencilTool(pencilTool, on: uiView)
+        if let provider = context.coordinator.inkProvider {
+            provider.apply(tool: pencilTool, color: inkColor, width: inkWidth)
+            let markup = InkOverlayProvider.isInkTool(pencilTool)
+            if uiView.isInMarkupMode != markup { uiView.isInMarkupMode = markup }
+        }
 
         // Actualizar modo de desplazamiento continuo vertical vs horizontal paginado
         let modeChanged = (isScrollMode && uiView.displayMode != .singlePageContinuous) ||
@@ -122,6 +139,11 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
         }
     }
     
+    /// Al cerrar el lector se guardan los trazos que estaban esperando.
+    static func dismantleUIView(_ uiView: PDFView, coordinator: Coordinator) {
+        coordinator.inkProvider?.flushSaves()
+    }
+
     private func renderHighlights(on uiView: PDFView) {
         guard let document = uiView.document else { return }
         
@@ -221,6 +243,7 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
 
         // Resaltador de texto con el Pencil
         weak var pencilPan: UIPanGestureRecognizer?
+        var inkProvider: InkOverlayProvider?
         private var activePencilTool: PencilTool?
         private var strokePage: PDFPage?
         private var strokeStart: CGPoint = .zero
