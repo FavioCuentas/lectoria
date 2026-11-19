@@ -550,6 +550,7 @@ struct PresentationReaderView: View {
         .onChange(of: scenePhase) { _, phase in
             sessionCoordinator?.handleScenePhaseChange(phase)
         }
+        .keepsScreenAwakeWhileReading()
         .onDisappear { sessionCoordinator?.endSession() }
     }
 
