@@ -113,7 +113,7 @@ struct PencilPaletteView: View {
                 .font(AppTypography.bodyBold)
                 .foregroundStyle(AppColor.textPrimary(for: theme))
             colorRow(for: tool)
-            widthRow
+            if state.showsWidth { widthRow }
         }
         .padding(AppSpacing.lg)
         .background(AppColor.surface(for: theme))

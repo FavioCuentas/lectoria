@@ -24,6 +24,8 @@ enum PencilPenColor: Equatable {
 final class PencilPaletteState {
     @ObservationIgnored private let defaults: UserDefaults
     let availableTools: [PencilTool]
+    /// El grosor solo aplica al trazo libre (PDF y presentaciones); en texto el marcador sigue el texto.
+    let showsWidth: Bool
 
     var tool: PencilTool { didSet { defaults.set(tool.rawValue, forKey: Keys.tool) } }
     var category: HighlightCategory { didSet { defaults.set(category.rawValue, forKey: Keys.category) } }
@@ -41,10 +43,11 @@ final class PencilPaletteState {
         self.defaults = defaults
         let tools = Self.tools(for: publicationType)
         availableTools = tools
+        showsWidth = tools.contains(.pen)
 
         // Una preferencia antigua ("text", herramienta retirada) vuelve a la pluma.
         let savedTool = defaults.string(forKey: Keys.tool).flatMap(PencilTool.init(rawValue:)) ?? .pen
-        tool = tools.contains(savedTool) ? savedTool : .pen
+        tool = tools.contains(savedTool) ? savedTool : (tools.first ?? .pen)
         category = defaults.string(forKey: Keys.category).flatMap(HighlightCategory.init(rawValue:))
             .flatMap { HighlightCategory.userSelectableCases.contains($0) ? $0 : nil } ?? .mainIdea
         penColor = defaults.string(forKey: Keys.penColor).flatMap(Self.decode) ?? .category(.mainIdea)
@@ -52,11 +55,11 @@ final class PencilPaletteState {
     }
 
     /// Pluma, marcador y borrador solo tienen sentido en contenido de diseño fijo (PDF y presentaciones).
-    /// En EPUB y texto no hay herramientas y el botón del lápiz no aparece.
+    /// En EPUB y texto el marcador marca palabras o párrafos y el borrador borra destacados.
     static func tools(for type: PublicationType) -> [PencilTool] {
         switch type {
         case .pdf, .pptx: [.pen, .marker, .eraser]
-        case .epub, .txt, .markdown, .pastedText: []
+        case .epub, .txt, .markdown, .pastedText: [.marker, .eraser]
         }
     }
 

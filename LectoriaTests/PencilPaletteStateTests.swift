@@ -15,8 +15,24 @@ struct PencilPaletteStateTests {
         let defaults = makeDefaults()
         #expect(PencilPaletteState(publicationType: .pdf, defaults: defaults).availableTools == [.pen, .marker, .eraser])
         #expect(PencilPaletteState(publicationType: .pptx, defaults: defaults).availableTools == [.pen, .marker, .eraser])
-        #expect(PencilPaletteState(publicationType: .epub, defaults: defaults).availableTools.isEmpty)
-        #expect(PencilPaletteState(publicationType: .txt, defaults: defaults).availableTools.isEmpty)
+        #expect(PencilPaletteState(publicationType: .epub, defaults: defaults).availableTools == [.marker, .eraser])
+        #expect(PencilPaletteState(publicationType: .txt, defaults: defaults).availableTools == [.marker, .eraser])
+        #expect(PencilPaletteState(publicationType: .markdown, defaults: defaults).availableTools == [.marker, .eraser])
+    }
+
+    /// En texto el marcador sigue las palabras o párrafos: no tiene grosor.
+    @Test func testWidthOnlyForFixedLayout() {
+        let defaults = makeDefaults()
+        #expect(PencilPaletteState(publicationType: .pdf, defaults: defaults).showsWidth)
+        #expect(!PencilPaletteState(publicationType: .epub, defaults: defaults).showsWidth)
+        #expect(!PencilPaletteState(publicationType: .txt, defaults: defaults).showsWidth)
+    }
+
+    /// Una pluma guardada (PDF) no existe en EPUB: arranca con el marcador.
+    @Test func testPenFallsBackToMarkerInTextFormats() {
+        let defaults = makeDefaults()
+        PencilPaletteState(publicationType: .pdf, defaults: defaults).tool = .pen
+        #expect(PencilPaletteState(publicationType: .epub, defaults: defaults).tool == .marker)
     }
 
     @Test func testDefaults() {
