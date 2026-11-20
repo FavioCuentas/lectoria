@@ -77,6 +77,7 @@ struct PublicationCard: View {
                 Task {
                     try? await dependencies.publicationRepository.delete(id: publication.id)
                     await dependencies.searchIndexingService.remove(publicationID: publication.id)
+                    await InkStore.shared.delete(publicationID: publication.id)
                     await MainActor.run {
                         onUpdate?()
                     }

@@ -30,6 +30,9 @@ struct PDFReaderView: View {
     @State private var initialLocation: PDFLocation? = nil
     @State private var currentLocation: PDFLocation? = nil
     @State private var targetLocation: PDFLocation? = nil
+    /// Modo lápiz (solo iPad): paleta visible y el Pencil marca.
+    @State private var pencilMode = false
+    @State private var pencilPalette: PencilPaletteState
     @State private var tocItems: [TOCItem] = []
     @State private var bookmarks: [Bookmark] = []
     
@@ -60,6 +63,7 @@ struct PDFReaderView: View {
     init(record: PublicationRecord, initialLocation: PDFLocation? = nil, initialSearch: InitialSearch? = nil) {
         self.record = record
         self._initialLocation = State(initialValue: initialLocation)
+        self._pencilPalette = State(initialValue: PencilPaletteState(publicationType: record.publicationType))
         self._pendingInitialSearch = State(initialValue: initialSearch)
     }
 
@@ -119,11 +123,17 @@ struct PDFReaderView: View {
                     highlights: highlights,
                     pdfViewBinding: $pdfViewReference,
                     onTap: { _ in
+                        // Con el lápiz activo la barra y la paleta se quedan visibles.
+                        guard !pencilMode else { return }
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showUI.toggle()
                         }
                     },
-                    targetLocation: targetLocation
+                    targetLocation: targetLocation,
+                    pencilTool: pencilMode ? pencilPalette.tool : nil,
+                    inkPublicationID: record.id,
+                    inkColor: pencilPalette.inkColor(),
+                    inkWidth: pencilPalette.strokeWidth()
                 )
                 .ignoresSafeArea(.all, edges: showUI ? [] : .all)
             }
@@ -163,6 +173,18 @@ struct PDFReaderView: View {
                 inlineResponseBubble(theme: appTheme)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .overlay(alignment: .bottom) {
+            if pencilMode {
+                PencilPaletteView(state: pencilPalette, theme: themeManager.currentTheme) {
+                    withAnimation(.easeInOut(duration: 0.2)) { pencilMode = false }
+                }
+                .padding(.bottom, 96)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onChange(of: pencilMode) { _, isOn in
+            if isOn { withAnimation { showUI = true } }
         }
         .navigationBarHidden(true)
         .statusBarHidden(!showUI)
@@ -300,6 +322,9 @@ struct PDFReaderView: View {
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                     }
                     .accessibilityLabel("Índice y marcadores")
+
+                    // Lápiz (solo iPad)
+                    PencilModeButton(isOn: $pencilMode, theme: theme)
                 }
                 .padding(.horizontal, AppSpacing.sm)
                 .padding(.top, safeAreaTop)

@@ -27,12 +27,27 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
     /// Ubicación externa forzada (para navegar desde el índice o marcadores).
     var targetLocation: PDFLocation? = nil
 
+    /// Herramienta activa del lápiz (pluma, marcador o borrador; solo iPad); `nil` con la paleta oculta.
+    var pencilTool: PencilTool? = nil
+
+    /// Trazo libre (pluma y marcador): documento al que pertenecen los dibujos, color y grosor actuales.
+    var inkPublicationID: UUID? = nil
+    var inkColor: UIColor = .black
+    var inkWidth: CGFloat = 4
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
     func makeUIView(context: Context) -> PDFView {
         let pdfView = PDFView()
+        // El proveedor de lienzos va antes del documento (lo pide PDFKit). Solo en iPad.
+        if let inkPublicationID, UIDevice.current.userInterfaceIdiom == .pad {
+            let provider = InkOverlayProvider(publicationID: inkPublicationID, document: document)
+            pdfView.pageOverlayViewProvider = provider
+            context.coordinator.inkProvider = provider
+            Task { await provider.loadDrawings() }
+        }
         pdfView.document = document
         pdfView.autoScales = true
         pdfView.minScaleFactor = pdfView.scaleFactorForSizeToFit
@@ -82,6 +97,13 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PDFView, context: Context) {
+        context.coordinator.parent = self
+        if let provider = context.coordinator.inkProvider {
+            provider.apply(tool: pencilTool, color: inkColor, width: inkWidth)
+            let markup = InkOverlayProvider.isInkTool(pencilTool)
+            if uiView.isInMarkupMode != markup { uiView.isInMarkupMode = markup }
+        }
+
         // Actualizar modo de desplazamiento continuo vertical vs horizontal paginado
         let modeChanged = (isScrollMode && uiView.displayMode != .singlePageContinuous) ||
                           (!isScrollMode && uiView.displayMode != .singlePage)
@@ -105,6 +127,11 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
         }
     }
     
+    /// Al cerrar el lector se guardan los trazos que estaban esperando.
+    static func dismantleUIView(_ uiView: PDFView, coordinator: Coordinator) {
+        coordinator.inkProvider?.flushSaves()
+    }
+
     private func renderHighlights(on uiView: PDFView) {
         guard let document = uiView.document else { return }
         
@@ -201,10 +228,13 @@ struct PDFNavigatorWrapper: UIViewRepresentable {
         weak var pdfView: PDFView?
         var lastTarget: PDFLocation?
         var lastHighlightsCount: Int = 0
+        /// Lienzos de la pluma y el marcador (solo iPad). El PDFView solo guarda una referencia débil.
+        var inkProvider: InkOverlayProvider?
 
         init(_ parent: PDFNavigatorWrapper) {
             self.parent = parent
         }
+
 
         @objc func handleTap(_ gesture: UITapGestureRecognizer) {
             guard let pdfView = pdfView else { return }
