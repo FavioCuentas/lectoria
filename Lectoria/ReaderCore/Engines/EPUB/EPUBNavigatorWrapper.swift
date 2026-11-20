@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 @preconcurrency import ReadiumShared
 @preconcurrency import ReadiumNavigator
 import os
@@ -32,6 +33,13 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
     /// Expone el navegador de Readium a SwiftUI (búsqueda: decoraciones y saltos directos).
     var navigatorBinding: Binding<EPUBNavigatorViewController?>? = nil
 
+    /// Herramienta del lápiz (solo iPad): marcador o borrador; `nil` con la paleta oculta.
+    var pencilTool: PencilTool? = nil
+    /// Trazo del marcador terminado sobre texto: selección de Readium lista para guardar como destacado.
+    var onPencilMark: ((Selection) -> Void)? = nil
+    /// Trazo del borrador terminado: texto que cruzó y `href` del capítulo.
+    var onPencilErase: ((String, String) -> Void)? = nil
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
@@ -49,6 +57,7 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
             )
             navigator.delegate = context.coordinator
             context.coordinator.navigator = navigator
+            installPencil(on: navigator, coordinator: context.coordinator)
             exposeNavigator(navigator)
             return navigator
         } catch {
@@ -60,11 +69,20 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
             ) {
                 navigator.delegate = context.coordinator
                 context.coordinator.navigator = navigator
+                installPencil(on: navigator, coordinator: context.coordinator)
                 exposeNavigator(navigator)
                 return navigator
             }
             fatalError("No se pudo instanciar el EPUBNavigatorViewController de Readium: \(error.localizedDescription)")
         }
+    }
+
+    /// Trazo del lápiz sobre el libro (solo iPad; activo con el marcador o el borrador).
+    private func installPencil(on navigator: EPUBNavigatorViewController, coordinator: Coordinator) {
+        guard UIDevice.current.userInterfaceIdiom == .pad else { return }
+        let recognizer = PencilStrokeRecognizer(target: coordinator, action: #selector(Coordinator.handlePencilStroke(_:)))
+        navigator.view?.addGestureRecognizer(recognizer)
+        coordinator.pencilRecognizer = recognizer
     }
 
     private func exposeNavigator(_ navigator: EPUBNavigatorViewController) {
@@ -75,6 +93,9 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: EPUBNavigatorViewController, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.pencilRecognizer?.isEnabled = pencilTool != nil
+
         // Enviar las preferencias actualizadas al renderizador de Readium
         uiViewController.submitPreferences(preferences)
         
@@ -87,7 +108,8 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
         }
         
         // Despejar selección reactivamente si hasSelection se pone en false externamente
-        if !hasSelection {
+        // (No durante un trazo del lápiz: la selección provisional es la sombra del trazo.)
+        if !hasSelection && !context.coordinator.isPencilStroking {
             uiViewController.clearSelection()
         }
         
@@ -134,9 +156,127 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
         weak var navigator: EPUBNavigatorViewController?
         var lastTarget: EPUBLocation?
 
+        // Lápiz
+        weak var pencilRecognizer: PencilStrokeRecognizer?
+        private(set) var isPencilStroking = false
+        private weak var strokeWebView: WKWebView?
+        private var strokeStart: CGPoint = .zero
+
         init(_ parent: EPUBNavigatorWrapper) {
             self.parent = parent
         }
+
+        // MARK: - Lápiz
+
+        @objc func handlePencilStroke(_ recognizer: PencilStrokeRecognizer) {
+            guard let navigator, let host = navigator.view else { return }
+            switch recognizer.state {
+            case .began:
+                let start = recognizer.startLocation(in: host)
+                guard let webView = Self.webView(at: start, in: host) else { return }
+                isPencilStroking = true
+                strokeWebView = webView
+                strokeStart = Self.clientPoint(start, from: host, in: webView)
+                select(to: recognizer.location(in: host), host: host, completion: nil)
+            case .changed:
+                select(to: recognizer.location(in: host), host: host, completion: nil)
+            case .ended:
+                let tool = parent.pencilTool
+                select(to: recognizer.location(in: host), host: host) { [weak self] text in
+                    self?.finishStroke(text: text, tool: tool)
+                }
+            default:
+                endStroke()
+            }
+        }
+
+        /// Selecciona en la página web desde el inicio del trazo hasta `point`, ampliado a palabras completas.
+        private func select(to point: CGPoint, host: UIView, completion: ((String) -> Void)?) {
+            guard isPencilStroking, let webView = strokeWebView else { completion?(""); return }
+            let end = Self.clientPoint(point, from: host, in: webView)
+            let script = String(format: Self.selectScript, strokeStart.x, strokeStart.y, end.x, end.y)
+            webView.evaluateJavaScript(script) { result, _ in
+                completion?((result as? String) ?? "")
+            }
+        }
+
+        private func finishStroke(text: String, tool: PencilTool?) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, let navigator else { endStroke(); return }
+            switch tool {
+            case .eraser:
+                let href = navigator.currentLocation?.href.string ?? ""
+                endStroke()
+                parent.onPencilErase?(trimmed, href)
+            case .marker:
+                // Readium recibe la selección por un mensaje de JavaScript: se espera a que llegue.
+                Task { @MainActor [weak self] in
+                    for _ in 0..<8 {
+                        if let selection = navigator.currentSelection,
+                           !(selection.locator.text.highlight ?? "").isEmpty {
+                            self?.endStroke()
+                            self?.parent.onPencilMark?(selection)
+                            return
+                        }
+                        try? await Task.sleep(for: .milliseconds(50))
+                    }
+                    self?.endStroke()
+                }
+            default:
+                endStroke()
+            }
+        }
+
+        private func endStroke() {
+            isPencilStroking = false
+            strokeWebView = nil
+            navigator?.clearSelection()
+        }
+
+        private static func webView(at point: CGPoint, in host: UIView) -> WKWebView? {
+            var view = host.hitTest(point, with: nil)
+            while let current = view {
+                if let webView = current as? WKWebView { return webView }
+                view = current.superview
+            }
+            return nil
+        }
+
+        /// Punto en coordenadas de la ventana visible de la página web (las que usa `caretRangeFromPoint`).
+        private static func clientPoint(_ point: CGPoint, from host: UIView, in webView: WKWebView) -> CGPoint {
+            let local = webView.convert(point, from: host)
+            let inset = webView.scrollView.adjustedContentInset
+            let zoom = max(webView.scrollView.zoomScale, 0.01)
+            return CGPoint(x: (local.x - inset.left) / zoom, y: (local.y - inset.top) / zoom)
+        }
+
+        /// Selección entre dos puntos, ampliada a palabras completas. Devuelve el texto seleccionado.
+        private static let selectScript = """
+        (function(x1, y1, x2, y2) {
+          var a = document.caretRangeFromPoint(x1, y1), b = document.caretRangeFromPoint(x2, y2);
+          if (!a || !b) { return ""; }
+          var first = a, last = b;
+          if (a.compareBoundaryPoints(Range.START_TO_START, b) > 0) { first = b; last = a; }
+          var range = document.createRange();
+          range.setStart(first.startContainer, first.startOffset);
+          range.setEnd(last.startContainer, last.startOffset);
+          var word = /[\\p{L}\\p{N}'’-]/u;
+          if (range.startContainer.nodeType === 3) {
+            var t = range.startContainer.data, o = range.startOffset;
+            while (o > 0 && word.test(t[o - 1])) { o--; }
+            range.setStart(range.startContainer, o);
+          }
+          if (range.endContainer.nodeType === 3) {
+            var t2 = range.endContainer.data, o2 = range.endOffset;
+            while (o2 < t2.length && word.test(t2[o2])) { o2++; }
+            range.setEnd(range.endContainer, o2);
+          }
+          var selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+          return selection.toString();
+        })(%f, %f, %f, %f)
+        """
 
         // MARK: - EPUBNavigatorDelegate
 
@@ -175,6 +315,8 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
         }
         
         func navigator(_ navigator: SelectableNavigator, shouldShowMenuForSelection selection: Selection) -> Bool {
+            // La selección de un trazo del lápiz no abre el menú de Lectoria.
+            guard !isPencilStroking else { return false }
             parent.selectedText = selection.locator.text.highlight ?? ""
             parent.hasSelection = true
             parent.selectedLocator = selection.locator

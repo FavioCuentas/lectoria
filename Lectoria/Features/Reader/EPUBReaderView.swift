@@ -29,6 +29,9 @@ struct EPUBReaderView: View {
     @State private var initialLocation: EPUBLocation? = nil
     @State private var currentLocation: EPUBLocation? = nil
     @State private var targetLocation: EPUBLocation? = nil
+    /// Modo lápiz (solo iPad): paleta visible; el Pencil marca o borra.
+    @State private var pencilMode = false
+    @State private var pencilPalette: PencilPaletteState
     @State private var tocItems: [TOCItem] = []
 
     // Selección, Destacados y Anotaciones
@@ -86,6 +89,7 @@ struct EPUBReaderView: View {
     init(record: PublicationRecord, initialLocation: EPUBLocation? = nil, initialSearch: InitialSearch? = nil) {
         self.record = record
         self._initialLocation = State(initialValue: initialLocation)
+        self._pencilPalette = State(initialValue: PencilPaletteState(publicationType: record.publicationType))
         self._pendingInitialSearch = State(initialValue: initialSearch)
     }
 
@@ -113,12 +117,21 @@ struct EPUBReaderView: View {
                     selectedLocator: $selectedLocator,
                     highlights: highlights,
                     onTap: { _ in
+                        // Con el lápiz activo la barra y la paleta se quedan visibles.
+                        guard !pencilMode else { return }
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showUI.toggle()
                         }
                     },
                     targetLocation: targetLocation,
-                    navigatorBinding: $navigatorReference
+                    navigatorBinding: $navigatorReference,
+                    pencilTool: pencilMode ? pencilPalette.tool : nil,
+                    onPencilMark: { selection in
+                        createPencilHighlight(locator: selection.locator, category: pencilPalette.category)
+                    },
+                    onPencilErase: { text, href in
+                        erasePencilHighlights(strokeText: text, href: href)
+                    }
                 )
                 .ignoresSafeArea(.all, edges: showUI ? [] : .all)
             }
@@ -159,6 +172,18 @@ struct EPUBReaderView: View {
                 inlineResponseBubble(theme: appTheme)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+        }
+        .overlay(alignment: .bottom) {
+            if pencilMode {
+                PencilPaletteView(state: pencilPalette, theme: themeManager.currentTheme) {
+                    withAnimation(.easeInOut(duration: 0.2)) { pencilMode = false }
+                }
+                .padding(.bottom, 96)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onChange(of: pencilMode) { _, isOn in
+            if isOn { withAnimation { showUI = true } }
         }
         .navigationBarHidden(true)
         .statusBarHidden(!showUI)
@@ -279,6 +304,9 @@ struct EPUBReaderView: View {
                             .padding(AppSpacing.md)
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                     }
+
+                    // Lápiz (solo iPad)
+                    PencilModeButton(isOn: $pencilMode, theme: theme)
                 }
                 .padding(.horizontal, AppSpacing.sm)
                 .padding(.top, safeAreaTop)
@@ -922,6 +950,37 @@ struct EPUBReaderView: View {
         case .dictionary: return "dictionary"
         case .translation: return "translation"
         case .ai: return "ai"
+        }
+    }
+
+    /// Destacado creado con el marcador del Pencil: el localizador sale de la selección de Readium.
+    private func createPencilHighlight(locator: Locator, category: HighlightCategory) {
+        let text = (locator.text.highlight ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        let highlight = Highlight(
+            publicationID: record.id,
+            anchor: (try? locator.jsonString()) ?? "",
+            selectedText: text,
+            category: category.rawValue,
+            colorToken: categoryColorToken(category)
+        )
+        Task {
+            guard await dependencies.entitlementService.canPerformAction(.createHighlight) else {
+                showPaywall = true
+                return
+            }
+            try? await dependencies.highlightRepository.save(highlight)
+            await loadHighlights()
+        }
+    }
+
+    /// Borrador del Pencil: quita los destacados de este capítulo que se solapan con el trazo.
+    private func erasePencilHighlights(strokeText: String, href: String) {
+        let ids = PencilTextMarking.highlightsToErase(highlights, strokeText: strokeText, href: href)
+        guard !ids.isEmpty else { return }
+        Task {
+            for id in ids { try? await dependencies.highlightRepository.delete(id: id) }
+            await loadHighlights()
         }
     }
 
