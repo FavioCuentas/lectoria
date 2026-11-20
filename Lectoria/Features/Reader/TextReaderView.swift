@@ -63,6 +63,13 @@ struct TextReaderView: View {
     @State private var initialLocation: TextLocation? = nil
     @State private var currentLocation: TextLocation? = nil
     @State private var targetLocation: TextLocation? = nil
+    /// Modo lápiz (solo iPad): paleta visible; el Pencil marca o borra párrafos completos.
+    @State private var pencilMode = false
+    @State private var pencilPalette: PencilPaletteState
+    /// Marco de cada párrafo en el contenido, para saber cuáles cruza el trazo.
+    @State private var blockFrames: [Int: CGRect] = [:]
+    /// Párrafos que cruza el trazo en curso (sombra provisional).
+    @State private var pencilPreview: Set<Int> = []
     @State private var tocItems: [TOCItem] = []
     @State private var bookmarks: [Bookmark] = []
     
@@ -85,6 +92,7 @@ struct TextReaderView: View {
     init(record: PublicationRecord, initialLocation: TextLocation? = nil, initialSearch: InitialSearch? = nil) {
         self.record = record
         self._initialLocation = State(initialValue: initialLocation)
+        self._pencilPalette = State(initialValue: PencilPaletteState(publicationType: record.publicationType))
         self._pendingInitialSearch = State(initialValue: initialSearch)
     }
 
@@ -137,6 +145,9 @@ struct TextReaderView: View {
                             ForEach(blocks) { block in
                                 blockView(block)
                                     .id(block.index)
+                                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.contentSpace)) } action: {
+                                        blockFrames[block.index] = $0
+                                    }
                                     .onAppear {
                                         visibleIndices.insert(block.index)
                                         updateCurrentLocation()
@@ -150,6 +161,21 @@ struct TextReaderView: View {
                         .padding(.horizontal, AppSpacing.screenHorizontal)
                         .padding(.top, showUI ? 100 : 40)
                         .padding(.bottom, 120)
+                        .coordinateSpace(.named(Self.contentSpace))
+                        .gesture(PencilStrokeGesture(
+                            isEnabled: pencilMode,
+                            coordinateSpaceName: Self.contentSpace,
+                            onChanged: { start, current in
+                                pencilPreview = Set(PencilTextMarking.blocks(
+                                    crossedBy: min(start.y, current.y)...max(start.y, current.y), frames: blockFrames))
+                            },
+                            onEnded: { start, end in
+                                let touched = PencilTextMarking.blocks(
+                                    crossedBy: min(start.y, end.y)...max(start.y, end.y), frames: blockFrames)
+                                pencilPreview = []
+                                applyPencil(to: touched)
+                            }
+                        ))
                     }
                     .onTapGesture { point in
                         let width = UIScreen.main.bounds.width
@@ -188,6 +214,18 @@ struct TextReaderView: View {
             if !isLoading && loadingError == nil {
                 overlaysView(theme: appTheme)
             }
+        }
+        .overlay(alignment: .bottom) {
+            if pencilMode {
+                PencilPaletteView(state: pencilPalette, theme: themeManager.currentTheme) {
+                    withAnimation(.easeInOut(duration: 0.2)) { pencilMode = false }
+                }
+                .padding(.bottom, 96)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onChange(of: pencilMode) { _, isOn in
+            if isOn { withAnimation { showUI = true } }
         }
         .navigationBarHidden(true)
         .statusBarHidden(!showUI)
@@ -320,6 +358,9 @@ struct TextReaderView: View {
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                     }
                     .accessibilityLabel("Índice y marcadores")
+
+                    // Lápiz (solo iPad)
+                    PencilModeButton(isOn: $pencilMode, theme: theme)
                 }
                 .padding(.horizontal, AppSpacing.sm)
                 .padding(.top, safeAreaTop)
@@ -544,7 +585,7 @@ struct TextReaderView: View {
             }
         }
         .padding(.horizontal, AppSpacing.xs)
-        .background(highlightBgColor)
+        .background(pencilPreview.contains(block.index) ? pencilPreviewColor : highlightBgColor)
         .contentShape(Rectangle())
         .contextMenu {
             if let active = highlight {
@@ -1011,6 +1052,49 @@ struct TextReaderView: View {
             await MainActor.run {
                 self.highlights = list
             }
+        }
+    }
+
+    private static let contentSpace = "textContent"
+
+    /// Sombra del trazo en curso: el color elegido para el marcador, gris para el borrador.
+    private var pencilPreviewColor: Color {
+        pencilPalette.tool == .eraser
+            ? AppColor.textTertiary(for: themeManager.currentTheme).opacity(0.2)
+            : Color(uiColor: PencilPaletteState.color(for: pencilPalette.category)).opacity(0.25)
+    }
+
+    /// Marcador: cada párrafo cruzado queda destacado con el color elegido (sustituye el que tuviera).
+    /// Borrador: se quitan los destacados de esos párrafos.
+    private func applyPencil(to blockIndices: [Int]) {
+        guard !blockIndices.isEmpty else { return }
+        let tool = pencilPalette.tool
+        let category = pencilPalette.category
+        let existing = highlights.filter { highlight in
+            guard let data = highlight.anchor.data(using: .utf8),
+                  let location = try? JSONDecoder().decode(TextLocation.self, from: data) else { return false }
+            return blockIndices.contains(location.blockIndex)
+        }
+        let total = blocks.count
+        let newHighlights: [Highlight] = tool == .eraser ? [] : blockIndices.compactMap { index in
+            guard let block = blocks.first(where: { $0.index == index }),
+                  !block.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let pct = total > 1 ? Double(index) / Double(total - 1) : 0
+            let anchor = (try? JSONEncoder().encode(TextLocation(blockIndex: index, characterOffset: 0, percentage: pct)))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            return Highlight(publicationID: record.id, anchor: anchor, selectedText: block.rawText,
+                             category: category.rawValue, colorToken: categoryColorToken(category))
+        }
+        Task {
+            if !newHighlights.isEmpty {
+                guard await dependencies.entitlementService.canPerformAction(.createHighlight) else {
+                    showPaywall = true
+                    return
+                }
+            }
+            for highlight in existing { try? await dependencies.highlightRepository.delete(id: highlight.id) }
+            for highlight in newHighlights { try? await dependencies.highlightRepository.save(highlight) }
+            await loadHighlights()
         }
     }
 
