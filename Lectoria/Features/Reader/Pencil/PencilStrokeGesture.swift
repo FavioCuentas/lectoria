@@ -6,22 +6,21 @@ import UIKit
 /// Arrastre que solo acepta el Apple Pencil. Mientras está activo, los demás gestos de la vista
 /// (desplazar, seleccionar) esperan a que falle: un trazo del lápiz marca y no desplaza, pero un toque
 /// del lápiz sin arrastrar y cualquier gesto con el dedo funcionan como siempre.
-final class PencilStrokeRecognizer: UIPanGestureRecognizer, UIGestureRecognizerDelegate {
+final class PencilStrokeRecognizer: UIPanGestureRecognizer {
     override init(target: Any?, action: Selector?) {
         super.init(target: target, action: action)
         allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
         maximumNumberOfTouches = 1
-        delegate = self
         isEnabled = false
     }
 
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                           shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+    // Se usan los métodos de la subclase (no el delegate), porque SwiftUI puede poner su propio
+    // delegate a los gestos que monta.
+    override func shouldBeRequiredToFail(by otherGestureRecognizer: UIGestureRecognizer) -> Bool {
         otherGestureRecognizer !== self
     }
 
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                           shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool {
         false
     }
 

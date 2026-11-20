@@ -16,31 +16,22 @@ struct PencilTextMarkingTests {
         #expect(PencilTextMarking.blocks(crossedBy: 42...48, frames: frames).isEmpty)
     }
 
-    private func highlight(_ text: String, href: String) -> Highlight {
-        let anchor = "{\"href\":\"\(href)\",\"type\":\"application/xhtml+xml\",\"locations\":{},\"text\":{\"highlight\":\"\(text)\"}}"
-        return Highlight(publicationID: UUID(), anchor: anchor, selectedText: text)
-    }
-
-    @Test func testEraseOverlappingInSameChapterOnly() {
-        let inside = highlight("la ballena blanca", href: "cap1.xhtml")
-        let containing = highlight("Llamadme Ismael", href: "cap1.xhtml")
-        let otherChapter = highlight("la ballena blanca", href: "cap2.xhtml")
-        let unrelated = highlight("el faro", href: "cap1.xhtml")
-
-        let erased = PencilTextMarking.highlightsToErase(
-            [inside, containing, otherChapter, unrelated],
-            strokeText: "vio  la Ballena blanca y",
-            href: "cap1.xhtml"
+    /// El borrador del EPUB recibe de la página los ids de los subrayados que toca el trazo:
+    /// solo se borran los que existen en este documento.
+    @Test func testErasableIDsKeepsOnlyKnownHighlights() {
+        let a = Highlight(publicationID: UUID(), anchor: "{}", selectedText: "uno")
+        let b = Highlight(publicationID: UUID(), anchor: "{}", selectedText: "dos")
+        let ids = PencilTextMarking.erasableIDs(
+            from: [b.id.uuidString, "no-es-un-uuid", UUID().uuidString, b.id.uuidString],
+            highlights: [a, b]
         )
-        #expect(Set(erased) == [inside.id])
-
-        let erased2 = PencilTextMarking.highlightsToErase([containing], strokeText: "Ismael", href: "cap1.xhtml")
-        #expect(erased2 == [containing.id])
+        #expect(ids == [b.id])
     }
 
-    @Test func testEmptyStrokeErasesNothing() {
-        let h = highlight("a", href: "cap1.xhtml")
-        #expect(PencilTextMarking.highlightsToErase([h], strokeText: " ", href: "cap1.xhtml").isEmpty)
-        #expect(PencilTextMarking.highlightsToErase([h], strokeText: "a", href: "cap1.xhtml").isEmpty)
+    /// Solo cuentan los párrafos visibles: los marcos viejos de filas fuera de pantalla se ignoran.
+    @Test func testBlocksIgnoreFramesOfHiddenRows() {
+        let stale: [Int: CGRect] = [0: CGRect(x: 0, y: 0, width: 300, height: 40),
+                                    80: CGRect(x: 0, y: 10, width: 300, height: 40)]
+        #expect(PencilTextMarking.blocks(crossedBy: 5...20, frames: stale, visible: [0]) == [0])
     }
 }

@@ -1,35 +1,26 @@
 import Foundation
 import CoreGraphics
-@preconcurrency import ReadiumShared
 
 // MARK: - PencilTextMarking
 
 /// Lógica pura del marcador y el borrador del Pencil en EPUB y texto.
 enum PencilTextMarking {
     /// Bloques (párrafos) cuyo marco se solapa en vertical con el trazo, en orden.
-    static func blocks(crossedBy span: ClosedRange<CGFloat>, frames: [Int: CGRect]) -> [Int] {
+    /// Con `visible`, solo cuentan esos: los marcos de filas que salieron de pantalla pueden estar viejos.
+    static func blocks(crossedBy span: ClosedRange<CGFloat>, frames: [Int: CGRect], visible: Set<Int>? = nil) -> [Int] {
         frames
-            .filter { _, frame in frame.maxY >= span.lowerBound && frame.minY <= span.upperBound }
+            .filter { index, frame in
+                (visible?.contains(index) ?? true) && frame.maxY >= span.lowerBound && frame.minY <= span.upperBound
+            }
             .map(\.key)
             .sorted()
     }
 
-    /// Destacados del mismo capítulo (`href`) cuyo texto se solapa con el texto del trazo del borrador.
-    static func highlightsToErase(_ highlights: [Highlight], strokeText: String, href: String) -> [UUID] {
-        let stroke = normalize(strokeText)
-        guard stroke.count >= 2 else { return [] }
-        return highlights.compactMap { highlight in
-            guard let locator = try? Locator(jsonString: highlight.anchor),
-                  locator.href.string == href else { return nil }
-            let text = normalize(highlight.selectedText)
-            guard !text.isEmpty else { return nil }
-            return (stroke.contains(text) || text.contains(stroke)) ? highlight.id : nil
-        }
-    }
-
-    private static func normalize(_ text: String) -> String {
-        text.lowercased()
-            .split(whereSeparator: { $0.isWhitespace })
-            .joined(separator: " ")
+    /// Ids que devuelve la página del EPUB (subrayados cuyo rango toca el trazo del borrador),
+    /// limitados a los destacados de este documento y sin repetir.
+    static func erasableIDs(from rawIDs: [String], highlights: [Highlight]) -> [UUID] {
+        let known = Set(highlights.map(\.id))
+        var seen: Set<UUID> = []
+        return rawIDs.compactMap(UUID.init(uuidString:)).filter { known.contains($0) && seen.insert($0).inserted }
     }
 }

@@ -37,8 +37,8 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
     var pencilTool: PencilTool? = nil
     /// Trazo del marcador terminado sobre texto: selección de Readium lista para guardar como destacado.
     var onPencilMark: ((Selection) -> Void)? = nil
-    /// Trazo del borrador terminado: texto que cruzó y `href` del capítulo.
-    var onPencilErase: ((String, String) -> Void)? = nil
+    /// Trazo del borrador terminado: ids de los subrayados cuyo rango tocó el trazo.
+    var onPencilErase: (([String]) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -177,50 +177,58 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
                 isPencilStroking = true
                 strokeWebView = webView
                 strokeStart = Self.clientPoint(start, from: host, in: webView)
-                select(to: recognizer.location(in: host), host: host, completion: nil)
+                runStroke(to: recognizer.location(in: host), host: host, wantIDs: false, completion: nil)
             case .changed:
-                select(to: recognizer.location(in: host), host: host, completion: nil)
+                runStroke(to: recognizer.location(in: host), host: host, wantIDs: false, completion: nil)
             case .ended:
                 let tool = parent.pencilTool
-                select(to: recognizer.location(in: host), host: host) { [weak self] text in
-                    self?.finishStroke(text: text, tool: tool)
+                runStroke(to: recognizer.location(in: host), host: host, wantIDs: tool == .eraser) { [weak self] text, ids in
+                    self?.finishStroke(text: text, ids: ids, tool: tool)
                 }
             default:
                 endStroke()
             }
         }
 
-        /// Selecciona en la página web desde el inicio del trazo hasta `point`, ampliado a palabras completas.
-        private func select(to point: CGPoint, host: UIView, completion: ((String) -> Void)?) {
-            guard isPencilStroking, let webView = strokeWebView else { completion?(""); return }
+        /// Selecciona en la página web desde el inicio del trazo hasta `point` (palabras completas).
+        /// Con `wantIDs`, devuelve además los subrayados de Readium cuyo rango se solapa con el trazo.
+        private func runStroke(to point: CGPoint, host: UIView, wantIDs: Bool,
+                               completion: ((String, [String]) -> Void)?) {
+            guard isPencilStroking, let webView = strokeWebView else { completion?("", []); return }
             let end = Self.clientPoint(point, from: host, in: webView)
-            let script = String(format: Self.selectScript, strokeStart.x, strokeStart.y, end.x, end.y)
+            let script = String(format: Self.strokeScript, strokeStart.x, strokeStart.y, end.x, end.y, wantIDs ? 1 : 0)
             webView.evaluateJavaScript(script) { result, _ in
-                completion?((result as? String) ?? "")
+                guard let json = (result as? String)?.data(using: .utf8),
+                      let object = try? JSONSerialization.jsonObject(with: json) as? [String: Any] else {
+                    completion?("", [])
+                    return
+                }
+                completion?(object["text"] as? String ?? "", object["ids"] as? [String] ?? [])
             }
         }
 
-        private func finishStroke(text: String, tool: PencilTool?) {
-            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, let navigator else { endStroke(); return }
+        private func finishStroke(text: String, ids: [String], tool: PencilTool?) {
+            let expected = Self.normalize(text)
             switch tool {
             case .eraser:
-                let href = navigator.currentLocation?.href.string ?? ""
                 endStroke()
-                parent.onPencilErase?(trimmed, href)
+                if !ids.isEmpty { parent.onPencilErase?(ids) }
             case .marker:
-                // Readium recibe la selección por un mensaje de JavaScript: se espera a que llegue.
+                guard !expected.isEmpty, let navigator else { endStroke(); return }
+                // Readium recibe la selección por un mensaje de JavaScript (con 50 ms de espera):
+                // se espera a que llegue la del final del trazo, no una intermedia.
                 Task { @MainActor [weak self] in
-                    for _ in 0..<8 {
+                    var latest: Selection?
+                    for _ in 0..<12 {
                         if let selection = navigator.currentSelection,
                            !(selection.locator.text.highlight ?? "").isEmpty {
-                            self?.endStroke()
-                            self?.parent.onPencilMark?(selection)
-                            return
+                            latest = selection
+                            if Self.normalize(selection.locator.text.highlight ?? "") == expected { break }
                         }
                         try? await Task.sleep(for: .milliseconds(50))
                     }
                     self?.endStroke()
+                    if let latest { self?.parent.onPencilMark?(latest) }
                 }
             default:
                 endStroke()
@@ -233,28 +241,46 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
             navigator?.clearSelection()
         }
 
+        private static func normalize(_ text: String) -> String {
+            text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+
+        /// Página web bajo el punto; si el trazo empieza en un margen, la que ocupa esa columna.
         private static func webView(at point: CGPoint, in host: UIView) -> WKWebView? {
             var view = host.hitTest(point, with: nil)
             while let current = view {
                 if let webView = current as? WKWebView { return webView }
                 view = current.superview
             }
-            return nil
+            return allWebViews(in: host).first { webView in
+                let frame = webView.convert(webView.bounds, to: host)
+                return frame.minX <= point.x && point.x <= frame.maxX && webView.window != nil && !webView.isHidden
+            }
         }
 
-        /// Punto en coordenadas de la ventana visible de la página web (las que usa `caretRangeFromPoint`).
+        private static func allWebViews(in view: UIView) -> [WKWebView] {
+            if let webView = view as? WKWebView { return [webView] }
+            return view.subviews.flatMap { allWebViews(in: $0) }
+        }
+
+        /// Punto en coordenadas de la ventana visible de la página web (las de `caretRangeFromPoint`).
+        /// Igual que Readium: el margen del contenido solo desplaza mientras `contentOffset` es negativo.
         private static func clientPoint(_ point: CGPoint, from host: UIView, in webView: WKWebView) -> CGPoint {
             let local = webView.convert(point, from: host)
-            let inset = webView.scrollView.adjustedContentInset
+            let offset = webView.scrollView.contentOffset
             let zoom = max(webView.scrollView.zoomScale, 0.01)
-            return CGPoint(x: (local.x - inset.left) / zoom, y: (local.y - inset.top) / zoom)
+            return CGPoint(x: (local.x + min(0, offset.x)) / zoom, y: (local.y + min(0, offset.y)) / zoom)
         }
 
-        /// Selección entre dos puntos, ampliada a palabras completas. Devuelve el texto seleccionado.
-        private static let selectScript = """
-        (function(x1, y1, x2, y2) {
-          var a = document.caretRangeFromPoint(x1, y1), b = document.caretRangeFromPoint(x2, y2);
-          if (!a || !b) { return ""; }
+        /// Selección entre dos puntos (ajustados a la ventana), ampliada a palabras completas.
+        /// Devuelve JSON con el texto y, si se pide, los ids de los subrayados que se solapan.
+        private static let strokeScript = """
+        (function(x1, y1, x2, y2, wantIDs) {
+          function clampX(x) { return Math.min(Math.max(x, 0), window.innerWidth - 1); }
+          function clampY(y) { return Math.min(Math.max(y, 0), window.innerHeight - 1); }
+          var a = document.caretRangeFromPoint(clampX(x1), clampY(y1));
+          var b = document.caretRangeFromPoint(clampX(x2), clampY(y2));
+          if (!a || !b) { return JSON.stringify({ text: "", ids: [] }); }
           var first = a, last = b;
           if (a.compareBoundaryPoints(Range.START_TO_START, b) > 0) { first = b; last = a; }
           var range = document.createRange();
@@ -274,8 +300,19 @@ struct EPUBNavigatorWrapper: UIViewControllerRepresentable {
           var selection = window.getSelection();
           selection.removeAllRanges();
           selection.addRange(range);
-          return selection.toString();
-        })(%f, %f, %f, %f)
+          var ids = [];
+          if (wantIDs && window.readium && window.readium.getDecorations) {
+            var items = window.readium.getDecorations("highlights").items || [];
+            for (var i = 0; i < items.length; i++) {
+              var r = items[i].range;
+              if (!r) { continue; }
+              var overlaps = r.compareBoundaryPoints(Range.START_TO_END, range) < 0
+                          && r.compareBoundaryPoints(Range.END_TO_START, range) > 0;
+              if (overlaps) { ids.push(items[i].decoration.id); }
+            }
+          }
+          return JSON.stringify({ text: selection.toString(), ids: ids });
+        })(%f, %f, %f, %f, %d)
         """
 
         // MARK: - EPUBNavigatorDelegate

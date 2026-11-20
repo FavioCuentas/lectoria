@@ -14,7 +14,7 @@ Solo con la paleta visible, y solo el Pencil. El dedo sigue pasando páginas, de
   - **EPUB:** se marcan las palabras entre el inicio y el final del trazo, ampliadas a palabras completas.
   - **Texto y Markdown:** se marcan **párrafos completos**, todos los que cruza el trazo, igual que hoy con el dedo. Lo decidió el usuario.
 - **Borrador:** pasas el lápiz sobre un subrayado y se borra.
-  - **EPUB:** se borran los destacados del capítulo actual cuyo texto se solapa con el texto del trazo.
+  - **EPUB:** se borran los destacados cuyo rango en la página se solapa con el trazo, con su posición según Readium (`readium.getDecorations`), no por coincidencia de texto. También se borran sus notas ligadas.
   - **Texto y Markdown:** se borran los destacados de los párrafos que cruza el trazo.
 - **Opciones del Marcador:** mantener presionado abre solo los 5 colores, porque el grosor no aplica al texto. El Borrador no tiene opciones.
 

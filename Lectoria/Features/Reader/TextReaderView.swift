@@ -162,16 +162,18 @@ struct TextReaderView: View {
                         .padding(.top, showUI ? 100 : 40)
                         .padding(.bottom, 120)
                         .coordinateSpace(.named(Self.contentSpace))
+                        // El trazo puede empezar entre párrafos o en el margen.
+                        .contentShape(Rectangle())
                         .gesture(PencilStrokeGesture(
                             isEnabled: pencilMode,
                             coordinateSpaceName: Self.contentSpace,
                             onChanged: { start, current in
                                 pencilPreview = Set(PencilTextMarking.blocks(
-                                    crossedBy: min(start.y, current.y)...max(start.y, current.y), frames: blockFrames))
+                                    crossedBy: min(start.y, current.y)...max(start.y, current.y), frames: blockFrames, visible: visibleIndices))
                             },
                             onEnded: { start, end in
                                 let touched = PencilTextMarking.blocks(
-                                    crossedBy: min(start.y, end.y)...max(start.y, end.y), frames: blockFrames)
+                                    crossedBy: min(start.y, end.y)...max(start.y, end.y), frames: blockFrames, visible: visibleIndices)
                                 pencilPreview = []
                                 applyPencil(to: touched)
                             }
@@ -194,7 +196,8 @@ struct TextReaderView: View {
                                     proxy.scrollTo(maxVisible + 1, anchor: .top)
                                 }
                             }
-                        } else {
+                        } else if !pencilMode {
+                            // Con el lápiz activo la barra y la paleta se quedan visibles.
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 showUI.toggle()
                             }
@@ -1092,9 +1095,21 @@ struct TextReaderView: View {
                     return
                 }
             }
-            for highlight in existing { try? await dependencies.highlightRepository.delete(id: highlight.id) }
+            await deleteHighlightsWithNotes(existing.map(\.id))
             for highlight in newHighlights { try? await dependencies.highlightRepository.save(highlight) }
             await loadHighlights()
+        }
+    }
+
+    /// Borra destacados y las notas ligadas a ellos (como el borrado con el dedo).
+    private func deleteHighlightsWithNotes(_ ids: [UUID]) async {
+        guard !ids.isEmpty else { return }
+        let removed = Set(ids)
+        for id in ids { try? await dependencies.highlightRepository.delete(id: id) }
+        if let notes = try? await dependencies.noteRepository.fetch(forPublication: record.id) {
+            for note in notes where note.highlightID.map(removed.contains) ?? false {
+                try? await dependencies.noteRepository.delete(id: note.id)
+            }
         }
     }
 

@@ -129,8 +129,8 @@ struct EPUBReaderView: View {
                     onPencilMark: { selection in
                         createPencilHighlight(locator: selection.locator, category: pencilPalette.category)
                     },
-                    onPencilErase: { text, href in
-                        erasePencilHighlights(strokeText: text, href: href)
+                    onPencilErase: { ids in
+                        erasePencilHighlights(decorationIDs: ids)
                     }
                 )
                 .ignoresSafeArea(.all, edges: showUI ? [] : .all)
@@ -305,8 +305,10 @@ struct EPUBReaderView: View {
                             .foregroundStyle(AppColor.textPrimary(for: theme))
                     }
 
-                    // Lápiz (solo iPad)
-                    PencilModeButton(isOn: $pencilMode, theme: theme)
+                    // Lápiz (solo iPad). En EPUB de diseño fijo el texto vive en marcos internos: no se ofrece.
+                    if adapter.publication?.metadata.layout != .fixed {
+                        PencilModeButton(isOn: $pencilMode, theme: theme)
+                    }
                 }
                 .padding(.horizontal, AppSpacing.sm)
                 .padding(.top, safeAreaTop)
@@ -974,13 +976,25 @@ struct EPUBReaderView: View {
         }
     }
 
-    /// Borrador del Pencil: quita los destacados de este capítulo que se solapan con el trazo.
-    private func erasePencilHighlights(strokeText: String, href: String) {
-        let ids = PencilTextMarking.highlightsToErase(highlights, strokeText: strokeText, href: href)
+    /// Borrador del Pencil: quita los subrayados que tocó el trazo (por posición en la página) y sus notas.
+    private func erasePencilHighlights(decorationIDs: [String]) {
+        let ids = PencilTextMarking.erasableIDs(from: decorationIDs, highlights: highlights)
         guard !ids.isEmpty else { return }
         Task {
-            for id in ids { try? await dependencies.highlightRepository.delete(id: id) }
+            await deleteHighlightsWithNotes(ids)
             await loadHighlights()
+        }
+    }
+
+    /// Borra destacados y las notas ligadas a ellos (como el borrado con el dedo).
+    private func deleteHighlightsWithNotes(_ ids: [UUID]) async {
+        guard !ids.isEmpty else { return }
+        let removed = Set(ids)
+        for id in ids { try? await dependencies.highlightRepository.delete(id: id) }
+        if let notes = try? await dependencies.noteRepository.fetch(forPublication: record.id) {
+            for note in notes where note.highlightID.map(removed.contains) ?? false {
+                try? await dependencies.noteRepository.delete(id: note.id)
+            }
         }
     }
 
