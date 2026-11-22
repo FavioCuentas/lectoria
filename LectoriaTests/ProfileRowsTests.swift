@@ -9,6 +9,7 @@ struct SubscriptionPlanLabelTests {
         #expect(SubscriptionPlanLabel.text(isPremium: false, productID: nil) == "Gratuito")
         #expect(SubscriptionPlanLabel.text(isPremium: true, productID: "com.lectoria.premium.founder") == "Premium Fundador")
         #expect(SubscriptionPlanLabel.text(isPremium: true, productID: "com.lectoria.premium.yearly") == "Premium anual")
+        #expect(SubscriptionPlanLabel.text(isPremium: true, productID: "com.lectoria.premium.semiannual") == "Premium semestral")
         #expect(SubscriptionPlanLabel.text(isPremium: true, productID: "com.lectoria.premium.lifetime") == "Premium de por vida")
         #expect(SubscriptionPlanLabel.text(isPremium: true, productID: nil) == "Premium")
         #expect(SubscriptionPlanLabel.text(isPremium: true, productID: "otro") == "Premium")

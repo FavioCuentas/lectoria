@@ -51,11 +51,14 @@ public final class StoreKitSubscriptionService: SubscriptionService, PurchaseSer
 
     public static let founderProductID = "com.lectoria.premium.founder"
     public static let yearlyProductID = "com.lectoria.premium.yearly"
+    /// Suscripción semestral (USD 4,99 cada 6 meses, 7 días de prueba). Mismo plan que Android.
+    public static let semiannualProductID = "com.lectoria.premium.semiannual"
     public static let lifetimeProductID = "com.lectoria.premium.lifetime"
 
     private let productIDs = [
         founderProductID,
         yearlyProductID,
+        semiannualProductID,
         lifetimeProductID
     ]
 

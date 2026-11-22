@@ -5,6 +5,7 @@ import StoreKit
 
 public enum PlanSelection: String, CaseIterable, Identifiable, Sendable {
     case yearly
+    case semiannual
     case lifetime
 
     public var id: String { rawValue }
@@ -15,7 +16,8 @@ public enum PlanSelection: String, CaseIterable, Identifiable, Sendable {
 /// Vista comercial y transparente para la suscripción y planes de Lectoría según el diseño oficial.
 ///
 /// Soporta los niveles de acceso requeridos por la especificación:
-/// - `yearly`: Suscripción anual Premium ($4.99/año con 7 días de prueba).
+/// - `yearly`: Suscripción anual Premium (USD 7,99/año con 7 días de prueba).
+/// - `semiannual`: Suscripción semestral Premium (USD 4,99 cada 6 meses con 7 días de prueba).
 /// - `lifetime`: Licencia de por vida ($19.99 pago único).
 /// - `institutional`: Acceso patrocinado por universidades/organizaciones.
 struct PaywallView: View {
@@ -54,7 +56,7 @@ struct PaywallView: View {
                         // 4. Bloque de Beneficios Premium
                         benefitsSection(theme: theme)
 
-                        // 5. Selector de Planes (Anual / Por vida)
+                        // 5. Selector de Planes (Anual / Semestral / Por vida)
                         planSelectorSection(theme: theme)
 
                         // 6. Tarjeta de Acceso Institucional
@@ -219,39 +221,95 @@ struct PaywallView: View {
     private func planSelectorSection(theme: AppTheme) -> some View {
         VStack(spacing: AppSpacing.md) {
             // Tarjeta 1: Premium Anual (Recomendado)
-            yearlyPlanCard(theme: theme)
+            subscriptionPlanCard(
+                plan: .yearly,
+                title: "Premium Anual",
+                periodText: String(localized: "al año"),
+                renewalText: String(localized: "al año"),
+                badge: "RECOMENDADO",
+                theme: theme
+            )
 
-            // Tarjeta 2: Premium de por vida
+            // Tarjeta 2: Premium Semestral
+            subscriptionPlanCard(
+                plan: .semiannual,
+                title: "Premium Semestral",
+                periodText: String(localized: "al semestre"),
+                renewalText: String(localized: "cada 6 meses"),
+                badge: nil,
+                theme: theme
+            )
+
+            // Tarjeta 3: Premium de por vida
             lifetimePlanCard(theme: theme)
         }
         .padding(.top, AppSpacing.xs)
     }
 
-    /// Producto anual a la venta: precio Fundador mientras esté publicado; si no, el anual regular.
+    /// Producto anual a la venta (USD 7,99). El plan Fundador ya no se vende: solo se reconoce
+    /// si alguien lo compró antes.
     private var annualStoreProduct: StoreKit.Product? {
-        products.first(where: { $0.id == StoreKitSubscriptionService.founderProductID })
-            ?? products.first(where: { $0.id == StoreKitSubscriptionService.yearlyProductID })
+        products.first(where: { $0.id == StoreKitSubscriptionService.yearlyProductID })
+    }
+
+    private var semiannualStoreProduct: StoreKit.Product? {
+        products.first(where: { $0.id == StoreKitSubscriptionService.semiannualProductID })
+    }
+
+    private func storeProduct(for plan: PlanSelection) -> StoreKit.Product? {
+        switch plan {
+        case .yearly: return annualStoreProduct
+        case .semiannual: return semiannualStoreProduct
+        case .lifetime: return lifetimeStoreProduct
+        }
+    }
+
+    /// Precio mostrado; si la App Store aún no respondió se usan los precios oficiales.
+    private func displayPrice(for plan: PlanSelection) -> String {
+        if let product = storeProduct(for: plan) { return product.displayPrice }
+        switch plan {
+        case .yearly: return "USD 7,99"
+        case .semiannual: return "USD 4,99"
+        case .lifetime: return "USD 19,99"
+        }
+    }
+
+    /// Las suscripciones tienen 7 días de prueba; si el producto cargó, se respeta su oferta real.
+    private func hasFreeTrial(_ plan: PlanSelection) -> Bool {
+        guard plan != .lifetime else { return false }
+        guard let product = storeProduct(for: plan) else { return true }
+        return product.subscription?.introductoryOffer?.paymentMode == .freeTrial
+    }
+
+    private func renewalText(for plan: PlanSelection) -> String {
+        plan == .yearly ? String(localized: "al año") : String(localized: "cada 6 meses")
     }
 
     private var lifetimeStoreProduct: StoreKit.Product? {
         products.first(where: { $0.id == StoreKitSubscriptionService.lifetimeProductID })
     }
 
-    private func yearlyPlanCard(theme: AppTheme) -> some View {
-        let isSelected = selectedPlan == .yearly
-        let yearlyProduct = annualStoreProduct
-        let priceText = yearlyProduct?.displayPrice ?? "USD 4,99"
+    private func subscriptionPlanCard(
+        plan: PlanSelection,
+        title: LocalizedStringKey,
+        periodText: String,
+        renewalText: String,
+        badge: LocalizedStringKey?,
+        theme: AppTheme
+    ) -> some View {
+        let isSelected = selectedPlan == plan
+        let priceText = displayPrice(for: plan)
 
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                selectedPlan = .yearly
+                selectedPlan = plan
             }
         } label: {
             ZStack(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: AppSpacing.xxs) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Premium Anual")
+                            Text(title)
                                 .font(.system(size: 17, weight: .bold, design: .serif))
                                 .foregroundStyle(AppColor.textPrimary(for: theme))
 
@@ -260,7 +318,7 @@ struct PaywallView: View {
                                     .font(.system(size: 15, weight: .bold))
                                     .foregroundStyle(AppColor.textPrimary(for: theme))
 
-                                Text("al año")
+                                Text(periodText)
                                     .font(.system(size: 13, weight: .regular))
                                     .foregroundStyle(AppColor.textSecondary(for: theme))
                             }
@@ -273,7 +331,9 @@ struct PaywallView: View {
                             .foregroundStyle(isSelected ? brandOrange : AppColor.textTertiary(for: theme))
                     }
 
-                    Text("7 días gratis, luego \(priceText) al año.")
+                    Text(hasFreeTrial(plan)
+                         ? "7 días gratis, luego \(priceText) \(renewalText)."
+                         : "Se renueva \(renewalText).")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundStyle(AppColor.textSecondary(for: theme))
                         .padding(.top, 2)
@@ -289,14 +349,16 @@ struct PaywallView: View {
                 )
 
                 // Badge "RECOMENDADO" superpuesto en el borde superior
-                Text("RECOMENDADO")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
-                    .background(brandOrange)
-                    .clipShape(Capsule())
-                    .offset(x: 16, y: -10)
+                if let badge {
+                    Text(badge)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(brandOrange)
+                        .clipShape(Capsule())
+                        .offset(x: 16, y: -10)
+                }
             }
         }
         .buttonStyle(.plain)
@@ -304,8 +366,7 @@ struct PaywallView: View {
 
     private func lifetimePlanCard(theme: AppTheme) -> some View {
         let isSelected = selectedPlan == .lifetime
-        let lifetimeProduct = lifetimeStoreProduct
-        let priceText = lifetimeProduct?.displayPrice ?? "USD 19,99"
+        let priceText = displayPrice(for: .lifetime)
 
         return Button {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -430,7 +491,7 @@ struct PaywallView: View {
                 .foregroundStyle(AppColor.textTertiary(for: theme))
                 .multilineTextAlignment(.center)
 
-            Text("Suscripción auto-renovable. Al finalizar los 7 días de prueba gratuita, el cobro se realizará a tu cuenta de Apple ID. La suscripción se renueva automáticamente a menos que se cancele al menos 24 horas antes del final del período actual.",
+            Text("Suscripción auto-renovable. Al finalizar los 7 días de prueba gratuita, el cobro se realizará a tu cuenta de Apple ID. La suscripción se renueva automáticamente (cada año o cada 6 meses, según el plan) a menos que se cancele al menos 24 horas antes del final del período actual.",
                  comment: "Paywall: auto renewal disclosure")
                 .font(.system(size: 10))
                 .foregroundStyle(AppColor.textTertiary(for: theme))
@@ -442,27 +503,27 @@ struct PaywallView: View {
     // MARK: - 9. Bottom CTA
 
     private func bottomCTASection(theme: AppTheme) -> some View {
-        let yearlyProduct = annualStoreProduct
-        let lifetimeProduct = lifetimeStoreProduct
-        let yearlyPrice = yearlyProduct?.displayPrice ?? "USD 4,99"
-        let lifetimePrice = lifetimeProduct?.displayPrice ?? "USD 19,99"
+        let plan = selectedPlan
+        let price = displayPrice(for: plan)
+        let trial = hasFreeTrial(plan)
 
         return VStack(spacing: AppSpacing.xs) {
             // Texto descriptivo sobre el botón
-            if selectedPlan == .yearly {
-                Text("7 días gratis. Después, \(yearlyPrice) al año.")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
-            } else {
-                Text("\(lifetimePrice) pago único.")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(AppColor.textPrimary(for: theme))
+            Group {
+                if plan == .lifetime {
+                    Text("\(price) pago único.")
+                } else if trial {
+                    Text("7 días gratis. Después, \(price) \(renewalText(for: plan)).")
+                } else {
+                    Text("\(price) \(renewalText(for: plan)).")
+                }
             }
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(AppColor.textPrimary(for: theme))
 
             // Botón Principal CTA
             Button {
-                let targetProduct = selectedPlan == .yearly ? yearlyProduct : lifetimeProduct
-                if let targetProduct {
+                if let targetProduct = storeProduct(for: plan) {
                     performPurchase(targetProduct)
                 } else {
                     errorMessage = String(localized: "No se pudieron cargar los productos de la App Store. Comprueba tu conexión e inténtalo de nuevo.", comment: "Paywall: products unavailable error")
@@ -474,7 +535,7 @@ struct PaywallView: View {
                     ProgressView()
                         .tint(.white)
                 } else {
-                    Text(selectedPlan == .yearly ? "Comenzar prueba gratuita" : "Comprar acceso de por vida")
+                    Text(plan == .lifetime ? "Comprar acceso de por vida" : (trial ? "Comenzar prueba gratuita" : "Suscribirme"))
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                 }

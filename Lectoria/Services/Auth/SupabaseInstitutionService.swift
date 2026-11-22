@@ -33,6 +33,13 @@ public final class SupabaseInstitutionService: InstitutionService, @unchecked Se
 
         let domain = parts[1]
 
+        // `institution_domains` solo es legible por usuarios autenticados: como invitado la consulta
+        // directa siempre fallaba y la app respondía "sin convenio". Se usa la RPC pública
+        // `lookup_institution_by_domain` (SECURITY DEFINER), que solo revela si ese dominio tiene convenio.
+        if let info = try await lookupDomainViaRPC(domain) {
+            return info
+        }
+
         let queryURLString = "\(supabaseURL)/rest/v1/institution_domains?domain=eq.\(domain.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? domain)&select=domain,institution_id,institutions(id,name,slug,is_active,plan_type)&is_active=eq.true"
         guard let url = URL(string: queryURLString) else {
             throw InstitutionalAuthError.serviceError(message: "URL inválida")
@@ -73,6 +80,43 @@ public final class SupabaseInstitutionService: InstitutionService, @unchecked Se
         }
 
         return InstitutionInfo(id: inst.id, name: inst.name, slug: inst.slug, planType: inst.plan_type)
+    }
+
+    /// Consulta la RPC pública de convenio por dominio.
+    /// - Returns: la institución, o `nil` si la RPC no está desplegada (se usa la consulta antigua).
+    /// - Throws: `domainUnauthorized` si el dominio no tiene convenio activo.
+    private func lookupDomainViaRPC(_ domain: String) async throws -> InstitutionInfo? {
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/lookup_institution_by_domain") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        applyHeaders(to: &request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["p_domain": domain])
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw InstitutionalAuthError.networkError
+        }
+        guard let http = response as? HTTPURLResponse else { throw InstitutionalAuthError.networkError }
+
+        // 404 = función aún no creada en este proyecto → usar la consulta directa.
+        if http.statusCode == 404 { return nil }
+        guard (200...299).contains(http.statusCode) else {
+            throw InstitutionalAuthError.domainUnauthorized(domain: domain)
+        }
+
+        struct Row: Codable {
+            let id: UUID
+            let name: String
+            let slug: String
+            let plan_type: String
+        }
+        guard let row = (try? JSONDecoder().decode([Row].self, from: data))?.first else {
+            throw InstitutionalAuthError.domainUnauthorized(domain: domain)
+        }
+        return InstitutionInfo(id: row.id, name: row.name, slug: row.slug, planType: row.plan_type)
     }
 
     public func inspectAccessCode(code: String) async throws -> InstitutionInfo {

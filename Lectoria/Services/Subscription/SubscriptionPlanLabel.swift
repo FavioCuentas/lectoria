@@ -11,6 +11,8 @@ enum SubscriptionPlanLabel {
             return String(localized: "Premium Fundador", comment: "Profile: founder plan")
         case "com.lectoria.premium.yearly":
             return String(localized: "Premium anual", comment: "Profile: yearly plan")
+        case "com.lectoria.premium.semiannual":
+            return String(localized: "Premium semestral", comment: "Profile: semiannual plan")
         case "com.lectoria.premium.lifetime":
             return String(localized: "Premium de por vida", comment: "Profile: lifetime plan")
         default:

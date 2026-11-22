@@ -1,6 +1,6 @@
 {
   "identifier" : "LectoriaStoreKitConfig",
-  "nonRenewingSubscriptions" : [ ],
+  "nonRenewingSubscriptions" : [],
   "products" : [
     {
       "displayPrice" : "19.99",
@@ -43,12 +43,12 @@
   "subscriptionGroups" : [
     {
       "id" : "premium_group",
-      "localizations" : [ ],
+      "localizations" : [],
       "name" : "Premium Subscription",
       "subscriptions" : [
         {
-          "adHocOffers" : [ ],
-          "codeOffers" : [ ],
+          "adHocOffers" : [],
+          "codeOffers" : [],
           "displayPrice" : "4.99",
           "familyShareable" : false,
           "groupNumber" : 1,
@@ -78,9 +78,9 @@
           "type" : "Recurring"
         },
         {
-          "adHocOffers" : [ ],
-          "codeOffers" : [ ],
-          "displayPrice" : "9.99",
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "7.99",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "regular_premium",
@@ -93,18 +93,49 @@
           "localizations" : [
             {
               "description" : "Acceso premium anual ilimitado con 7 días de prueba gratuita.",
-              "displayName" : "Premium Regular (Anual)",
+              "displayName" : "Premium Anual",
               "locale" : "es"
             },
             {
               "description" : "Unlimited premium access yearly with 7-day free trial.",
-              "displayName" : "Premium Regular (Yearly)",
+              "displayName" : "Premium Yearly",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.lectoria.premium.yearly",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "Premium Regular",
+          "referenceName" : "Premium Anual",
+          "subscriptionGroupID" : "premium_group",
+          "type" : "Recurring"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "semiannual_premium",
+          "introductoryOffer" : {
+            "internalID" : "semiannual_trial",
+            "paymentMode" : "free",
+            "numberOfPeriods" : 1,
+            "subscriptionPeriod" : "P7D"
+          },
+          "localizations" : [
+            {
+              "description" : "Acceso premium ilimitado cada 6 meses con 7 días de prueba gratuita.",
+              "displayName" : "Premium Semestral",
+              "locale" : "es"
+            },
+            {
+              "description" : "Unlimited premium access every 6 months with 7-day free trial.",
+              "displayName" : "Premium Semiannual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.lectoria.premium.semiannual",
+          "recurringSubscriptionPeriod" : "P6M",
+          "referenceName" : "Premium Semestral",
           "subscriptionGroupID" : "premium_group",
           "type" : "Recurring"
         }
