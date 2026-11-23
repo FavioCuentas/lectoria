@@ -1098,6 +1098,7 @@ struct EPUBReaderView: View {
     
     /// Ejecuta la acción de IA y muestra el resultado en el globo flotante inline.
     private func executeInlineAI(action: String) {
+        dependencies.analyticsService.trackStudyAction(action)
         let textToProcess = selectedText
         lastAIAction = action
         

@@ -1150,6 +1150,7 @@ struct PresentationReaderView: View {
         guard !trimmed.isEmpty else { return }
 
         if UIReferenceLibraryViewController.dictionaryHasDefinition(forTerm: trimmed) {
+            dependencies.analyticsService.track(.dictionaryLookedUp, properties: ["source": "system"])
             let dictVC = UIReferenceLibraryViewController(term: trimmed)
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                let rootVC = windowScene.windows.first?.rootViewController {
@@ -1194,6 +1195,7 @@ struct PresentationReaderView: View {
     }
 
     private func executeInlineAI(action: String) {
+        dependencies.analyticsService.trackStudyAction(action)
         let textToProcess = selectedText.isEmpty ? (activeSelectedText ?? "") : selectedText
         guard !textToProcess.isEmpty else { return }
 

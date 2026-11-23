@@ -66,6 +66,32 @@ public final class ImportService: Sendable {
     /// - Returns: El registro `PublicationRecord` creado e insertado en la persistencia.
     @MainActor
     public func importPublication(from url: URL) async throws -> PublicationRecord {
+        do {
+            return try await importPublicationRecord(from: url)
+        } catch let error as ImportError {
+            // Límites del plan y duplicados no son fallos técnicos: no se reportan.
+            switch error {
+            case .limitExceeded, .duplicateDocument: break
+            default: trackImportFailure(url: url, code: "import_error")
+            }
+            throw error
+        } catch {
+            trackImportFailure(url: url, code: "import_error")
+            throw error
+        }
+    }
+
+    /// Solo el formato (si es uno conocido) y un código genérico: nunca el nombre ni la ruta.
+    private func trackImportFailure(url: URL, code: String) {
+        var properties: [String: Any] = ["error_code": code]
+        if let type = PublicationType.from(fileExtension: url.pathExtension.lowercased()) {
+            properties["format"] = type.rawValue
+        }
+        analyticsService?.track(.documentImportFailed, properties: properties)
+    }
+
+    @MainActor
+    private func importPublicationRecord(from url: URL) async throws -> PublicationRecord {
         // 1. Validar el formato del archivo por su extensión
         let ext = url.pathExtension.lowercased()
         guard let publicationType = PublicationType.from(fileExtension: ext) else {

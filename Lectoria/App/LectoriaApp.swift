@@ -68,6 +68,8 @@ struct LectoriaApp: App {
                 Task { await dependencies.autoBackup.backupIfNeeded() }
             }
             .task {
+                // Cuenta a la persona como activa en el panel (también en modo invitado).
+                dependencies.analyticsService.track(.appLaunched)
                 try? await Task.sleep(for: .seconds(1.8))
                 withAnimation(.easeOut(duration: 0.4)) {
                     showSplash = false

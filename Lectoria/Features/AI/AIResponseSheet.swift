@@ -166,6 +166,8 @@ struct AIResponseSheet: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .onAppear {
+                // Una vez por apertura (los reintentos no cuentan de nuevo).
+                dependencies.analyticsService.trackStudyAction(actionName)
                 startRequest()
             }
             .translationTask(translationConfig) { session in

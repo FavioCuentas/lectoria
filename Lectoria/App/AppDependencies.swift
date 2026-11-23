@@ -62,9 +62,6 @@ public final class AppDependencies {
         let progressRepo = SwiftDataReadingProgressRepository(container: modelContainer)
 
         self.publicationRepository = pubRepo
-        self.bookmarkRepository = bookmarkRepo
-        self.highlightRepository = highlightRepo
-        self.noteRepository = noteRepo
         self.readingSessionRepository = sessionRepo
         self.aiUsageRepository = aiRepo
         self.subscriptionRepository = subRepo
@@ -115,6 +112,12 @@ public final class AppDependencies {
             supabaseURL: env.supabaseURL,
             anonKey: env.supabaseAnonKey
         )
+
+        // Las vistas usan versiones que registran en el panel cuándo se crea un resaltado,
+        // nota o marcador. EntitlementManager sigue con los repositorios base (solo cuenta).
+        self.bookmarkRepository = AnalyticsBookmarkRepository(base: bookmarkRepo, analytics: self.analyticsService)
+        self.highlightRepository = AnalyticsHighlightRepository(base: highlightRepo, analytics: self.analyticsService)
+        self.noteRepository = AnalyticsNoteRepository(base: noteRepo, analytics: self.analyticsService)
 
         let indexStore = try? SearchIndexStore(url: SearchIndexStore.defaultURL())
         self.searchIndexStore = indexStore
