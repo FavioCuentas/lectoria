@@ -379,10 +379,7 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, AppSpacing.lg)
             } else {
-                let columns = [
-                    GridItem(.flexible(), spacing: AppSpacing.md),
-                    GridItem(.flexible(), spacing: AppSpacing.md)
-                ]
+                let columns = [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: AppSpacing.md)]
                 LazyVGrid(columns: columns, spacing: AppSpacing.lg) {
                     ForEach(recentPublications, id: \.0.id) { pair in
                         let pub = pair.0

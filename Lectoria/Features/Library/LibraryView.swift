@@ -243,10 +243,8 @@ struct LibraryView: View {
         } else {
             ScrollView {
                 if isGridView {
-                    let columns = [
-                        GridItem(.flexible(), spacing: AppSpacing.lg),
-                        GridItem(.flexible(), spacing: AppSpacing.lg)
-                    ]
+                    // 2 columnas en iPhone; más en iPad según el ancho disponible.
+                    let columns = [GridItem(.adaptive(minimum: 150, maximum: 230), spacing: AppSpacing.lg)]
 
                     LazyVGrid(columns: columns, spacing: AppSpacing.xl) {
                         ForEach(items) { model in

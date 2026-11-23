@@ -173,27 +173,28 @@ struct PaywallView: View {
 
     private func benefitsSection(theme: AppTheme) -> some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            // Mismos beneficios que la web y Android (src/config/plans.ts → PREMIUM_FEATURES).
             benefitRow(
-                icon: "book.fill",
-                title: "Lectura y biblioteca sin límites.",
+                icon: "books.vertical.fill",
+                title: "Documentos ilimitados.",
                 theme: theme
             )
 
             benefitRow(
-                icon: "text.badge.checkmark",
-                title: "Notas, resaltados y herramientas de estudio.",
+                icon: "doc.richtext",
+                title: "PDF y presentaciones PowerPoint.",
                 theme: theme
             )
 
             benefitRow(
-                icon: "speaker.wave.2.fill",
-                title: "Texto a voz y funciones avanzadas de lectura.",
+                icon: "character.book.closed",
+                title: "Traducción en el dispositivo.",
                 theme: theme
             )
 
             benefitRow(
-                icon: "laptopcomputer.and.iphone",
-                title: "Uso en hasta 3 dispositivos.",
+                icon: "sparkles",
+                title: "Asistente de estudio con IA sin límite mensual.",
                 theme: theme
             )
         }
@@ -554,11 +555,11 @@ struct PaywallView: View {
 
                 HStack(spacing: AppSpacing.sm) {
                     Button("Términos de servicio") {
-                        if let url = URL(string: "https://lectoria.app/terms") { openURL(url) }
+                        openURL(LegalLinks.terms)
                     }
                     Text("•")
                     Button("Política de privacidad") {
-                        if let url = URL(string: "https://lectoria.app/privacy") { openURL(url) }
+                        openURL(LegalLinks.privacy)
                     }
                 }
                 .font(.system(size: 10, weight: .medium))

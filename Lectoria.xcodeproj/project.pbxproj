@@ -223,10 +223,11 @@
 				};
 			};
 			buildConfigurationList = F235068330084E1B00F873D4 /* Build configuration list for PBXProject "Lectoria" */;
-			developmentRegion = en;
+			developmentRegion = es;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				es,
 				Base,
 			);
 			mainGroup = F235067F30084E1A00F873D4;

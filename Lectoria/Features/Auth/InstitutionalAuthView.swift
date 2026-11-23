@@ -352,7 +352,7 @@ struct InstitutionalAuthView: View {
                 .foregroundStyle(AppColor.accent(for: theme))
             }
 
-            Link(destination: URL(string: "https://lectoria.app/instituciones")!) {
+            Link(destination: LegalLinks.institutionsHelp) {
                 HStack {
                     Image(systemName: "questionmark.circle")
                         .font(.system(size: 14))

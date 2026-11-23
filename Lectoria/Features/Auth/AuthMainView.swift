@@ -264,11 +264,11 @@ struct AuthMainView: View {
     private func footerSection(theme: AppTheme) -> some View {
         VStack(spacing: AppSpacing.xs) {
             HStack(spacing: AppSpacing.sm) {
-                Link("Términos de uso", destination: URL(string: "https://lectoria.app/terms")!)
+                Link("Términos de uso", destination: LegalLinks.terms)
                 Text("•")
-                Link("Privacidad", destination: URL(string: "https://lectoria.app/privacy")!)
+                Link("Privacidad", destination: LegalLinks.privacy)
                 Text("•")
-                Link("Soporte", destination: URL(string: "https://lectoria.app/support")!)
+                Link("Soporte", destination: LegalLinks.support)
             }
             .font(AppTypography.caption)
             .foregroundStyle(AppColor.textTertiary(for: theme))

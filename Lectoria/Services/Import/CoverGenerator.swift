@@ -83,7 +83,14 @@ public final class CoverGenerator: @unchecked Sendable {
         switch type {
         case .pdf:
             try generatePDFCover(from: url, to: destinationURL)
-        case .epub, .txt, .markdown, .pastedText:
+        case .epub:
+            // Portada real del libro si el EPUB la trae; si no, la portada de texto de siempre.
+            if let image = await EPUBMetadataReader.cover(at: url) {
+                try saveImageCover(image, to: destinationURL)
+            } else {
+                try generateTextBasedCover(from: url, title: metadata.title, author: metadata.author, to: destinationURL)
+            }
+        case .txt, .markdown, .pastedText:
             try generateTextBasedCover(from: url, title: metadata.title, author: metadata.author, to: destinationURL)
         case .pptx:
             try await generatePresentationCover(from: url, title: metadata.title, author: metadata.author, to: destinationURL)
@@ -93,6 +100,27 @@ public final class CoverGenerator: @unchecked Sendable {
     }
 
     // MARK: - Rendering Implementations
+
+    /// Guarda una imagen de portada reducida a la misma altura que las demás miniaturas.
+    @MainActor
+    private func saveImageCover(_ image: UIImage, to destinationURL: URL) throws {
+        let targetHeight: CGFloat = 480
+        let scale = min(1, targetHeight / max(image.size.height, 1))
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        guard let data = resized.jpegData(compressionQuality: 0.85) else {
+            throw CoverGeneratorError.failedToSaveCover("No se pudo obtener la representación JPEG.")
+        }
+        do {
+            try data.write(to: destinationURL)
+        } catch {
+            throw CoverGeneratorError.failedToSaveCover(error.localizedDescription)
+        }
+    }
 
     /// Renderiza la página 0 del PDF como una miniatura.
     @MainActor

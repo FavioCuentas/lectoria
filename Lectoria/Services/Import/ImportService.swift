@@ -163,9 +163,17 @@ public final class ImportService: Sendable {
         // 5. Extraer metadatos básicos (Título y Autor) fuera del MainActor:
         // implica abrir y parsear el documento (EPUB/PDF), trabajo pesado para archivos grandes.
         let originalFileName = url.lastPathComponent
-        let metadata = await Task.detached(priority: .userInitiated) { [metadataExtractor] in
+        var metadata = await Task.detached(priority: .userInitiated) { [metadataExtractor] in
             metadataExtractor.extract(from: tempFileURL, type: publicationType, originalFileName: originalFileName)
         }.value
+        // EPUB: título y autor reales del libro en lugar del nombre del archivo.
+        if publicationType == .epub, let info = await EPUBMetadataReader.info(at: tempFileURL) {
+            metadata = ExtractedMetadata(
+                title: info.title ?? metadata.title,
+                author: info.author ?? metadata.author,
+                language: metadata.language
+            )
+        }
 
         // 6. Obtener tamaño físico y generar un nombre local único para el archivo
         let fileSize = try fileStorageService.getFileSize(at: tempFileURL)

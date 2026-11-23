@@ -9,6 +9,7 @@ import Observation
 /// Integra Sign in with Apple, visualización de estado de la cuenta,
 /// cambio de tema visual, cierre de sesión, migración de datos y eliminación de cuenta.
 struct ProfileView: View {
+    @Environment(\.openURL) private var openURL
     @Environment(ThemeManager.self) private var themeManager
     @Environment(AppDependencies.self) private var dependencies
 
@@ -181,7 +182,7 @@ struct ProfileView: View {
                         icon: "hand.raised",
                         title: String(localized: "Política de privacidad",
                                       comment: "Profile: privacy policy")
-                    ) {}
+                    ) { openURL(LegalLinks.privacy) }
 
                     Divider()
 
@@ -189,7 +190,7 @@ struct ProfileView: View {
                         icon: "doc.text",
                         title: String(localized: "Términos de uso",
                                       comment: "Profile: terms of use")
-                    ) {}
+                    ) { openURL(LegalLinks.terms) }
 
                     Divider()
 

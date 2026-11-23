@@ -92,7 +92,7 @@ public final class LocalDeviceAIService: AIService, @unchecked Sendable {
         **Punto clave**: En este pasaje, el autor desarrolla la idea central estableciendo relaciones entre los términos clave para reforzar la comprensión del capítulo.
         \(entityText)
 
-        ℹ️ *Procesado localmente en tu iPhone con Apple NaturalLanguage (Sin internet).*
+        ℹ️ *Procesado localmente en tu dispositivo con Apple NaturalLanguage (Sin internet).*
         """
     }
 
@@ -113,7 +113,7 @@ public final class LocalDeviceAIService: AIService, @unchecked Sendable {
 
         💡 **Conclusión**: El pasaje sintetiza los conceptos esenciales para facilitar su repaso rápido.
 
-        ℹ️ *Procesado localmente en tu iPhone.*
+        ℹ️ *Procesado localmente en tu dispositivo.*
         """
     }
 
@@ -142,7 +142,7 @@ public final class LocalDeviceAIService: AIService, @unchecked Sendable {
 
         «\(trimmed)»
 
-        ℹ️ *Traducción realizada localmente en tu dispositivo mediante los modelos lingüísticos del iPhone.*
+        ℹ️ *Traducción realizada localmente en tu dispositivo mediante los modelos lingüísticos del sistema.*
         """
     }
 
@@ -165,7 +165,7 @@ public final class LocalDeviceAIService: AIService, @unchecked Sendable {
 
         💡 **Punto principal**: Este extracto resume los conceptos clave presentes en la lectura actual.
 
-        ℹ️ *Resumen extractivo generado por la unidad de IA local del iPhone.*
+        ℹ️ *Resumen extractivo generado por la unidad de IA local del dispositivo.*
         """
     }
 
@@ -189,7 +189,7 @@ public final class LocalDeviceAIService: AIService, @unchecked Sendable {
 
         🧠 *Tip de estudio: Intenta responder estas 3 preguntas en voz alta antes de continuar la lectura.*
 
-        ℹ️ *Generado localmente en tu iPhone.*
+        ℹ️ *Generado localmente en tu dispositivo.*
         """
     }
 
@@ -270,7 +270,7 @@ public final class LocalDeviceAIService: AIService, @unchecked Sendable {
 
         \(hasSystemDict ? "✅ *Definición disponible en el diccionario nativo del sistema iOS.*" : "")
 
-        ℹ️ *Búsqueda ejecutada 100% en el dispositivo (iPhone).*
+        ℹ️ *Búsqueda ejecutada 100% en el dispositivo.*
         """
     }
 }

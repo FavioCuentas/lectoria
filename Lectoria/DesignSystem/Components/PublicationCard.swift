@@ -100,7 +100,9 @@ struct PublicationCard: View {
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                 }
-                .frame(height: 180)
+                // Proporción de portada de libro: antes era una altura fija de 180 pt, que en iPad
+                // (celdas anchas) recortaba las portadas en una franja horizontal.
+                .aspectRatio(3.0 / 4.0, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
 
                 VStack(alignment: .leading, spacing: AppSpacing.xxs) {
